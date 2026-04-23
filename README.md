@@ -53,11 +53,13 @@ Use one of these as the main entry, depending on your goal:
 ### 1) Vehicle Kinematic Model (used in `CinematicModel.m`)
 
 State:
+
 $$
 x = \begin{bmatrix}X & Y & \psi & \delta\end{bmatrix}^T
 $$
 
 Dynamics:
+
 $$
 \dot X = v\cos(\psi), \quad
 \dot Y = v\sin(\psi), \quad
@@ -73,28 +75,34 @@ $$
 ### 2) Transformed Nonlinear Model (used by HG observer design)
 
 Transformed state:
+
 $$
 z = \begin{bmatrix}z_1 & z_2 & z_3 & z_4 & z_5 & z_6\end{bmatrix}^T
 $$
 
 With
+
 $$
 \alpha(z) = \frac{-z_5 z_3 + z_2 z_6}{v^2}
 $$
 
 Dynamics (`CinematicModelTransformed.m`):
+
 $$
 \dot z_1 = z_2,\; \dot z_2 = z_3,\; \dot z_3 = -\alpha z_6,
 $$
+
 $$
 \dot z_4 = z_5,\; \dot z_5 = z_6,\; \dot z_6 = \alpha z_3
 $$
 
 Equivalent compact form used in code:
+
 $$
 \dot z = A z + B\,\Phi(z,v)
 $$
 where
+
 $$
 \Phi(z,v)=
 \begin{bmatrix}
@@ -108,16 +116,19 @@ $$
 Let $\hat z$ be the estimated transformed state, and $y_c$ the interpolated measurement at current time.
 
 When measurement is available:
+
 $$
 \dot{\hat z} = A\hat z + B\,\Phi(\hat z,v) + T K (y_c - C\hat z)
 $$
 
 When measurement is missing (NaN):
+
 $$
 \dot{\hat z} = A\hat z + B\,\Phi(\hat z,v)
 $$
 
 Optional projection/saturation in code:
+
 $$
 \dot{\hat z} \leftarrow \mathrm{Proj}(\dot{\hat z})
 $$
@@ -140,11 +151,13 @@ v_y-\hat z_5
 $$
 
 When position measurement is available:
+
 $$
 \dot{\hat z} = A\hat z + B\,\Phi(\hat z,v) + T K (y_c - C\hat z) + T M\Delta_v
 $$
 
 When position measurement is missing:
+
 $$
 \dot{\hat z} = A\hat z + B\,\Phi(\hat z,v) + T M\Delta_v
 $$
@@ -152,22 +165,27 @@ $$
 ### 6) EKF Model Used in Comparison (`ExtendedKalmanFilter.m`)
 
 State:
+
 $$
 \mu = \begin{bmatrix}x & y & \theta\end{bmatrix}^T, \quad u=\begin{bmatrix}v & \omega\end{bmatrix}^T
 $$
 
 Propagation with $r=\frac{v}{\omega}$:
+
 $$
 x_{k+1}=x_k-r\sin\theta_k+r\sin(\theta_k+\omega\Delta t)
 $$
+
 $$
 y_{k+1}=y_k+r\cos\theta_k-r\cos(\theta_k+\omega\Delta t)
 $$
+
 $$
 	heta_{k+1}=\theta_k+\omega\Delta t
 $$
 
 Measurement model:
+
 $$
 z_k = \begin{bmatrix}x_k & y_k\end{bmatrix}^T + \nu_k
 $$
