@@ -5,21 +5,27 @@ This project compares nonlinear High-Gain Observer variants against an Extended 
 It includes:
 - Synthetic simulation scripts (no real-data dependency)
 - Real-data comparison scripts (using Data.mat)
+- A practical real-vehicle friendly script with simple discrete-time tuning
 - Core observer/model functions and EKF class
 
 ## Recommended Main Scripts
 
 Use one of these as the main entry, depending on your goal:
 
-1. `Compare_method_to_kalman.m` (recommended primary entry)
+1. `Compare_method_to_kalman_practical.m` (recommended for real vehicle implementation)
+- Easiest deployment-oriented version in this repository.
+- Avoids symbolic/LMI design and ODE-based observer integration.
+- Uses a discrete-time observer loop with robust GPS dropout handling.
+
+2. `Compare_method_to_kalman.m` (recommended research/legacy primary entry)
 - Best overall demo for this repository.
 - Uses real data from `Data.mat`.
 - Compares Multi-Output High-Gain Observer vs EKF.
 
-2. `comparaison_SHGO.m`
+3. `comparaison_SHGO.m`
 - Real-data comparison between Multi-Output High-Gain Observer and standard SHGO-style high-gain observer.
 
-3. `main.m`
+4. `main.m`
 - Standalone synthetic simulation for the base High-Gain Observer pipeline.
 - Good starting point to understand the method before real-data scripts.
 
@@ -27,6 +33,7 @@ Use one of these as the main entry, depending on your goal:
 
 ### Entry Scripts (runnable)
 - `main.m`: Synthetic kinematic simulation + high-gain observer.
+- `Compare_method_to_kalman_practical.m`: Practical real-data script with discrete observer + EKF (deployment-oriented).
 - `Compare_method_to_kalman.m`: Real-data benchmark (Multi-Output HG vs EKF).
 - `comparaison_SHGO.m`: Real-data benchmark (Multi-Output HG vs SHGO).
 - `First_method.m`: Synthetic/legacy method-1 observer experiment, includes comparison with `Meth2.mat`.
@@ -252,14 +259,43 @@ MATLAB toolboxes and external packages used by scripts:
 - YALMIP (`sdpvar`, `optimize`) for LMI setup
 - An SDP solver configured for YALMIP (for example SDPT3, SeDuMi, or MOSEK)
 
+For `Compare_method_to_kalman_practical.m` specifically:
+- No Symbolic toolbox needed
+- No YALMIP/SDP solver needed
+- Uses standard MATLAB operations and the existing `ExtendedKalmanFilter` class
+
 ## Quick Start
 
 1. Open MATLAB.
 2. Set current folder to this project directory.
 3. Run one of:
+- `Compare_method_to_kalman_practical`
 - `Compare_method_to_kalman`
 - `comparaison_SHGO`
 - `main`
+
+## Practical Real-Vehicle Workflow
+
+Use `Compare_method_to_kalman_practical.m` when you want simple implementation and tuning on real logs.
+
+1. Replace simulated sensor generation with your real sensor streams:
+- `gps_meas`: Nx2 position measurements `[x, y]` (use NaN when missing)
+- `vxy_meas`: Nx2 velocity measurements `[vx, vy]`
+- `yaw_rate_meas`: Nx1 yaw-rate measurements
+
+2. Keep `tspan` as an Nx1 timestamp vector in seconds.
+- The script computes `dt = max(tspan(k) - tspan(k-1), 1e-3)` for robustness.
+
+3. Start tuning only these gains in `cfg`:
+- `pos_gain`
+- `vel_gain`
+- `yaw_correction_gain`
+
+4. If GPS dropouts are frequent:
+- Lower `pos_gain` slightly
+- Increase `vel_gain` slightly
+
+5. Check printed RMS errors and the trajectory/yaw/error plots to compare EKF vs practical observer.
 
 ## Notes
 
