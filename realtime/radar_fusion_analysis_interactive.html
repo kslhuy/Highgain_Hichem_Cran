@@ -1093,11 +1093,35 @@ Difference = 1 m
           ROS 2 Execution Commands
         </h2>
         <p style="margin-bottom: 20px; color: var(--muted);">
-          Use these commands to check ROS topics, launch the optimized CPU debug script, and control ONNX/PT model behavior.
+          Normal case is CPU first: test the script locally, then run the live ROS node with <code>device:=cpu</code>. GPU/Docker setup is optional and should come after the CPU path works.
         </p>
 
         <!-- Command 1 -->
-        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">1. Verify Sensor Topic Frequency</h3>
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">1. Local CPU Smoke Test (No ROS Required)</h3>
+        <div class="code-console">
+          <div class="code-console-header">
+            <div class="console-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <div class="console-title">cpu_smoke_test.ps1</div>
+            <button class="btn-copy" onclick="copyCode(this, 'python realtime\\radartracks_processing_person_car_cpu_debug.py --offline-demo --max-frames 30 --no-output')">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+                <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12a1.5 1.5 0 01.439 1.061V16.5A1.5 1.5 0 0115.5 18h-7A1.5 1.5 0 017 16.5v-13z" />
+                <path d="M14.25 5.5l2.5 2.5h-2.5V5.5z" />
+                <path d="M5.25 6a1.5 1.5 0 00-1.5 1.5v11A1.5 1.5 0 005.25 20h7a1.5 1.5 0 001.5-1.5v-1.75H5.25a.25.25 0 01-.25-.25V6H5.25z" />
+              </svg>
+              Copy Command
+            </button>
+          </div>
+          <pre><code># Quick normal CPU check using realtime/car.mp4, fake depth, and fake radar.
+# No ROS, no Docker, no GPU, and no display window required:
+python realtime\radartracks_processing_person_car_cpu_debug.py --offline-demo --max-frames 30 --no-output</code></pre>
+        </div>
+
+        <!-- Command 2 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">2. Verify Sensor Topic Frequency</h3>
         <div class="code-console">
           <div class="code-console-header">
             <div class="console-dots">
@@ -1121,8 +1145,8 @@ ros2 topic hz /camera/camera/aligned_depth_to_color/image_raw
 ros2 topic hz /radar_scan</code></pre>
         </div>
 
-        <!-- Command 2 -->
-        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">2. Launch CPU Debug Node (Default Settings)</h3>
+        <!-- Command 3 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">3. Normal Live ROS CPU Run</h3>
         <div class="code-console">
           <div class="code-console-header">
             <div class="console-dots">
@@ -1130,7 +1154,7 @@ ros2 topic hz /radar_scan</code></pre>
               <span class="dot-yellow"></span>
               <span class="dot-green"></span>
             </div>
-            <div class="console-title">launch_cpu_debug.sh</div>
+            <div class="console-title">normal_live_ros_cpu.sh</div>
             <button class="btn-copy" onclick="copyCode(this, 'python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \\\n  -p device:=cpu \\\n  -p yolo_imgsz:=480 \\\n  -p max_yolo_hz:=5.0 \\\n  -p torch_num_threads:=4')">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
                 <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12a1.5 1.5 0 01.439 1.061V16.5A1.5 1.5 0 0115.5 18h-7A1.5 1.5 0 017 16.5v-13z" />
@@ -1140,16 +1164,20 @@ ros2 topic hz /radar_scan</code></pre>
               Copy Commands
             </button>
           </div>
-          <pre><code># ONNX is selected automatically first. PT is used only if ONNX is missing and export fails:
+          <pre><code># Normal live ROS case from this repo checkout.
+# ONNX is selected automatically first. PT is only backup:
 python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
   -p device:=cpu \
   -p yolo_imgsz:=480 \
   -p max_yolo_hz:=5.0 \
-  -p torch_num_threads:=4</code></pre>
+  -p torch_num_threads:=4
+
+# If this file is installed inside a ROS package, use the package entrypoint instead:
+# ros2 run &lt;your_package&gt; radartracks_processing_person_car_cpu_debug --ros-args -p device:=cpu</code></pre>
         </div>
 
-        <!-- Command 3 -->
-        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">3. Low-Resource Mode (Disabled Debug Windows)</h3>
+        <!-- Command 4 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">4. Low-Resource Mode (Disabled Debug Windows)</h3>
         <div class="code-console">
           <div class="code-console-header">
             <div class="console-dots">
@@ -1176,8 +1204,8 @@ python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
   -p torch_num_threads:=2</code></pre>
         </div>
 
-        <!-- Command 4 -->
-        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">4. Model Selection Pipeline</h3>
+        <!-- Command 5 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">5. Model Selection Pipeline</h3>
         <div class="code-console">
           <div class="code-console-header">
             <div class="console-dots">
@@ -1205,8 +1233,8 @@ python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
 yolo export model=realtime/yolo12n.pt format=onnx imgsz=480 simplify=True</code></pre>
         </div>
 
-        <!-- Command 5 -->
-        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">5. Run <code>car.mp4</code> Like a Live Camera with Fake Radar/Depth</h3>
+        <!-- Command 6 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">6. Run <code>car.mp4</code> Like a Live Camera with Fake Radar/Depth</h3>
         <div class="code-console">
           <div class="code-console-header">
             <div class="console-dots">
