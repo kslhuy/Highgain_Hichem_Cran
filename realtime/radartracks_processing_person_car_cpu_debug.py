@@ -208,10 +208,10 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.declare_parameter("radar_match_slop_sec", 0.15)
         self.declare_parameter("radar_lateral_offset_m", 0.0)
         self.declare_parameter("depth_window_px", 11)
-        self.declare_parameter("depth_gate_base_m", 1.6)
-        self.declare_parameter("depth_gate_ratio", 0.16)
+        self.declare_parameter("depth_gate_base_m", 8.0)
+        self.declare_parameter("depth_gate_ratio", 0.27)
         self.declare_parameter("allow_missing_depth", True)
-        self.declare_parameter("camera_position_weight", 0.5)
+        self.declare_parameter("camera_position_weight", 0.2)
         self.declare_parameter("velocity_alpha", 0.35)
 
         # Debug views. Turn debug_visuals off for headless runs or weak CPUs.
@@ -901,7 +901,7 @@ class PersonCarRadarYOLOFusionNode(Node):
                 color = (130, 130, 130)
                 radius = 3
             cv2.circle(img, (radar.u, radar.v), radius, color, -1)
-
+        ## label matches after drawing all points and boxes so labels are on top
         for match in matches:
             x1, y1, _, _ = match.yolo.bbox
             radar_pt = (match.radar.u, match.radar.v)
@@ -1247,10 +1247,10 @@ def configure_offline_fusion(args, frame_width, frame_height):
     fusion.radar_match_slop_sec = 0.15
     fusion.radar_lateral_offset_m = 0.0
     fusion.depth_window_px = 11
-    fusion.depth_gate_base_m = 1.6
+    fusion.depth_gate_base_m = 3.6
     fusion.depth_gate_ratio = 0.16
     fusion.allow_missing_depth = True
-    fusion.camera_position_weight = 0.5
+    fusion.camera_position_weight = 0.2
     fusion.velocity_alpha = 0.35
     fusion.debug_visuals = True
     fusion.show_yolo_debug = True
