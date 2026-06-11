@@ -1,0 +1,1640 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Radar YOLO Fusion Analysis</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface-2: #eef3f6;
+      --ink: #172026;
+      --muted: #65717a;
+      --line: #d8e0e6;
+      --blue: #2364aa;
+      --green: #228b5b;
+      --amber: #a86600;
+      --red: #b43b3b;
+      --teal: #147c82;
+      --shadow: 0 10px 30px rgba(23, 32, 38, 0.08);
+      --radius: 8px;
+      --mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      --sans: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: var(--sans);
+      line-height: 1.5;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      border-bottom: 1px solid var(--line);
+      background: rgba(244, 246, 248, 0.96);
+      backdrop-filter: blur(10px);
+    }
+
+    .wrap {
+      width: min(1220px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    .topbar-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 68px;
+    }
+
+    .brand {
+      min-width: 220px;
+    }
+
+    .brand-title {
+      margin: 0;
+      font-size: 1.05rem;
+      font-weight: 760;
+    }
+
+    .brand-subtitle {
+      margin: 2px 0 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .tabs {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      overflow-x: auto;
+      padding: 10px 0;
+    }
+
+    .tab {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--muted);
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    .tab:hover {
+      color: var(--ink);
+      background: #e8edf1;
+    }
+
+    .tab.active {
+      color: #fff;
+      background: var(--blue);
+      border-color: var(--blue);
+    }
+
+    main {
+      padding: 28px 0 56px;
+    }
+
+    .view {
+      display: none;
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    .section-head {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      margin: 0 0 18px;
+    }
+
+    .section-head h2 {
+      margin: 0;
+      font-size: clamp(1.45rem, 2vw, 2rem);
+      line-height: 1.15;
+    }
+
+    .section-head p {
+      margin: 6px 0 0;
+      color: var(--muted);
+      max-width: 780px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .grid.cols-2 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .grid.cols-3 {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
+    .panel,
+    .metric,
+    .risk,
+    .code-row {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .panel {
+      padding: 18px;
+    }
+
+    .metric {
+      padding: 16px;
+      min-height: 120px;
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 0.85rem;
+      margin-bottom: 8px;
+    }
+
+    .metric .value {
+      font-size: 1.35rem;
+      font-weight: 780;
+      line-height: 1.2;
+    }
+
+    .metric .note {
+      margin-top: 10px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .good {
+      color: var(--green);
+    }
+
+    .warn {
+      color: var(--amber);
+    }
+
+    .bad {
+      color: var(--red);
+    }
+
+    .mono {
+      font-family: var(--mono);
+    }
+
+    code {
+      font-family: var(--mono);
+      background: #edf1f4;
+      padding: 0.1rem 0.28rem;
+      border-radius: 4px;
+    }
+
+    pre {
+      margin: 0;
+      overflow-x: auto;
+      background: #101820;
+      color: #e8f1f7;
+      padding: 14px;
+      border-radius: 6px;
+      font-size: 0.88rem;
+      line-height: 1.45;
+    }
+
+    .callout {
+      border-left: 4px solid var(--blue);
+      background: #eef6ff;
+      padding: 14px 16px;
+      border-radius: 6px;
+    }
+
+    .callout strong {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .selector-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+
+    .segmented {
+      display: inline-flex;
+      border: 1px solid var(--line);
+      background: var(--surface);
+      border-radius: 8px;
+      padding: 4px;
+      gap: 4px;
+    }
+
+    .segmented button {
+      border: 0;
+      border-radius: 6px;
+      padding: 8px 10px;
+      background: transparent;
+      cursor: pointer;
+      color: var(--muted);
+    }
+
+    .segmented button.active {
+      color: #fff;
+      background: var(--teal);
+    }
+
+    .comparison {
+      display: grid;
+      grid-template-columns: 220px repeat(2, minmax(0, 1fr));
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface);
+      box-shadow: var(--shadow);
+    }
+
+    .comparison div {
+      padding: 13px 14px;
+      border-bottom: 1px solid var(--line);
+      border-right: 1px solid var(--line);
+    }
+
+    .comparison div:nth-child(3n) {
+      border-right: 0;
+    }
+
+    .comparison .head {
+      background: var(--surface-2);
+      font-weight: 760;
+    }
+
+    .comparison .row-label {
+      color: var(--muted);
+      font-weight: 700;
+      background: #fbfcfd;
+    }
+
+    .comparison div:nth-last-child(-n + 3) {
+      border-bottom: 0;
+    }
+
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(6, minmax(120px, 1fr));
+      gap: 10px;
+      margin-top: 14px;
+    }
+
+    .stage {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px 12px;
+      min-height: 128px;
+    }
+
+    .stage h3 {
+      margin: 0 0 8px;
+      font-size: 0.98rem;
+    }
+
+    .stage p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .stage.active-stage {
+      border-color: var(--blue);
+      outline: 3px solid rgba(35, 100, 170, 0.12);
+    }
+
+    .stage-tag {
+      display: inline-block;
+      margin-bottom: 8px;
+      font-size: 0.76rem;
+      font-weight: 760;
+      color: #fff;
+      background: var(--blue);
+      border-radius: 999px;
+      padding: 2px 7px;
+    }
+
+    .flow-controls {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-top: 12px;
+    }
+
+    .plain-button,
+    .control-button {
+      border: 1px solid var(--line);
+      background: var(--surface);
+      color: var(--ink);
+      padding: 8px 11px;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+    .plain-button:hover,
+    .control-button:hover {
+      border-color: var(--blue);
+    }
+
+    .demo-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      background: #0f1720;
+      border-radius: var(--radius);
+      border: 1px solid #1f2e3a;
+    }
+
+    .controls {
+      display: grid;
+      gap: 14px;
+    }
+
+    .control {
+      display: grid;
+      gap: 6px;
+    }
+
+    .control label {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      accent-color: var(--blue);
+    }
+
+    select {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--ink);
+      padding: 9px 10px;
+    }
+
+    .result-box {
+      border: 1px solid var(--line);
+      background: #fbfcfd;
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+
+    .result-line {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .result-line:last-child {
+      border-bottom: 0;
+    }
+
+    .perf-grid {
+      display: grid;
+      grid-template-columns: minmax(280px, 0.9fr) minmax(0, 1.5fr);
+      gap: 16px;
+      align-items: start;
+    }
+
+    .perf-number {
+      font-size: clamp(2rem, 6vw, 4rem);
+      line-height: 1;
+      font-weight: 820;
+      margin: 8px 0;
+    }
+
+    .risk {
+      padding: 0;
+      overflow: hidden;
+    }
+
+    .risk button {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border: 0;
+      background: transparent;
+      padding: 14px 16px;
+      text-align: left;
+      cursor: pointer;
+      color: var(--ink);
+    }
+
+    .risk button strong {
+      font-size: 1rem;
+    }
+
+    .risk .body {
+      display: none;
+      padding: 0 16px 16px;
+      color: var(--muted);
+    }
+
+    .risk.open .body {
+      display: block;
+    }
+
+    .risk .flag {
+      font-family: var(--mono);
+      color: var(--red);
+      font-size: 0.82rem;
+    }
+
+    .code-map {
+      display: grid;
+      gap: 10px;
+    }
+
+    .code-row {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 12px;
+      padding: 13px 14px;
+      align-items: start;
+      box-shadow: none;
+    }
+
+    .code-row strong {
+      color: var(--blue);
+    }
+
+    .code-row p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 760;
+      background: #e8edf1;
+      color: var(--ink);
+      white-space: nowrap;
+    }
+
+    .status-pill.good {
+      background: #e5f5ee;
+      color: var(--green);
+    }
+
+    .status-pill.warn {
+      background: #fff3dc;
+      color: var(--amber);
+    }
+
+    .status-pill.bad {
+      background: #fdebea;
+      color: var(--red);
+    }
+
+    .step-list {
+      display: grid;
+      gap: 12px;
+      counter-reset: step;
+    }
+
+    .step-card {
+      position: relative;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px 16px 16px 58px;
+      min-height: 92px;
+    }
+
+    .step-card::before {
+      counter-increment: step;
+      content: counter(step);
+      position: absolute;
+      left: 16px;
+      top: 16px;
+      width: 28px;
+      height: 28px;
+      display: grid;
+      place-items: center;
+      border-radius: 50%;
+      background: var(--blue);
+      color: #fff;
+      font-weight: 800;
+      font-size: 0.88rem;
+    }
+
+    .step-card h3 {
+      margin: 0 0 6px;
+      font-size: 1rem;
+    }
+
+    .step-card p {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .command-stack {
+      display: grid;
+      gap: 10px;
+    }
+
+    .mini-table {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface);
+    }
+
+    .mini-table div {
+      padding: 11px 12px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .mini-table div:nth-child(2n + 1) {
+      background: #fbfcfd;
+      color: var(--muted);
+      font-weight: 700;
+    }
+
+    .mini-table div:nth-last-child(-n + 2) {
+      border-bottom: 0;
+    }
+
+    .footer-note {
+      margin-top: 30px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    @media (max-width: 980px) {
+      .topbar-inner,
+      .section-head,
+      .demo-layout,
+      .perf-grid {
+        display: block;
+      }
+
+      .tabs {
+        margin-top: 8px;
+      }
+
+      .grid.cols-2,
+      .grid.cols-3,
+      .pipeline {
+        grid-template-columns: 1fr;
+      }
+
+      .comparison {
+        grid-template-columns: 145px repeat(2, minmax(0, 1fr));
+        font-size: 0.88rem;
+      }
+
+      .demo-layout .panel + .panel,
+      .perf-grid .panel + .panel {
+        margin-top: 16px;
+      }
+
+      .code-row {
+        grid-template-columns: 1fr;
+      }
+
+      .mini-table {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .wrap {
+        width: min(100% - 20px, 1220px);
+      }
+
+      main {
+        padding-top: 18px;
+      }
+
+      .comparison {
+        display: block;
+      }
+
+      .comparison div {
+        border-right: 0;
+      }
+
+      .comparison .head:first-child {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="wrap topbar-inner">
+      <div class="brand">
+        <h1 class="brand-title">Radar YOLO Fusion Analysis</h1>
+        <p class="brand-subtitle">Interactive report for the two ROS 2 scripts</p>
+      </div>
+      <nav class="tabs" aria-label="Report sections">
+        <button class="tab active" data-view="overview">Overview</button>
+        <button class="tab" data-view="compare">Compare</button>
+        <button class="tab" data-view="pipeline">Pipeline</button>
+        <button class="tab" data-view="fusion">Fusion Demo</button>
+        <button class="tab" data-view="performance">Performance</button>
+        <button class="tab" data-view="actionplan">Action Steps</button>
+        <button class="tab" data-view="risks">Risks</button>
+        <button class="tab" data-view="codemap">Code Map</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section id="overview" class="view active">
+      <div class="section-head">
+        <div>
+          <h2>What These Scripts Are</h2>
+          <p>Both files are ROS 2 nodes that combine YOLO camera detections, RealSense aligned depth, and radar returns or tracks into fused object detections.</p>
+        </div>
+        <span class="status-pill warn">Expected performance, not benchmarked</span>
+      </div>
+
+      <div class="grid cols-3">
+        <article class="metric">
+          <div class="label">YOLO model requested</div>
+          <div class="value mono">yolo12n.pt</div>
+          <div class="note">This means the scripts ask Ultralytics for a YOLO12 nano weight file. The workspace does not include the weight file.</div>
+        </article>
+        <article class="metric">
+          <div class="label">Fusion style</div>
+          <div class="value">Geometric late fusion</div>
+          <div class="note">YOLO supplies class and box. Radar supplies range, azimuth, RCS, and velocity.</div>
+        </article>
+        <article class="metric">
+          <div class="label">Tracking level</div>
+          <div class="value warn">Limited</div>
+          <div class="note">The scripts are not Kalman filters. The all-classes file consumes radar tracks, but it does not estimate tracks itself.</div>
+        </article>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:16px">
+        <section class="panel">
+          <h3>Core idea</h3>
+          <p>The camera sees object appearance. YOLO detects boxes and classes such as person or car. The radar measures physical distance, bearing, reflection strength, and relative velocity. The script projects radar into the image and accepts a fusion when the projected radar point aligns with a YOLO box.</p>
+          <div class="callout">
+            <strong>The important assumption</strong>
+            The radar and camera are treated as if they are almost perfectly aligned. There is no full radar-to-camera extrinsic calibration matrix in these scripts.
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Local environment facts</h3>
+          <p>The code imports <code>from ultralytics import YOLO</code> and constructs <code>YOLO("yolo12n.pt")</code>. The repository has no <code>.pt</code> file and no dependency lock file. In the checked local Python environment, <code>ultralytics</code> and <code>torch</code> were not installed, so the exact installed package version cannot be inferred from this workspace.</p>
+          <pre><code>self.model = YOLO("yolo12n.pt")
+self.target_classes = ["person", "car", "bus", ...]</code></pre>
+        </section>
+      </div>
+    </section>
+
+    <section id="compare" class="view">
+      <div class="section-head">
+        <div>
+          <h2>Script Comparison</h2>
+          <p>The newer script is leaner and more practical for deployment. The all-classes script is closer to an experimental debugging node with radar plotting.</p>
+        </div>
+      </div>
+
+      <div class="selector-row">
+        <div class="segmented" aria-label="Script selector">
+          <button class="active" data-script="lean">radartracks_processing.py</button>
+          <button data-script="all">all_classes.py</button>
+        </div>
+        <span id="scriptVerdict" class="status-pill good">Best default for /radar_scan</span>
+      </div>
+
+      <div class="grid cols-2">
+        <section class="panel" id="scriptFocus"></section>
+        <section class="panel">
+          <h3>Side-by-side detail</h3>
+          <div class="comparison" aria-label="Comparison table">
+            <div class="head">Topic</div>
+            <div class="head">radartracks_processing.py</div>
+            <div class="head">all_classes.py</div>
+
+            <div class="row-label">Radar input</div>
+            <div><code>/radar_scan</code>, type <code>radar_msgs/RadarScan</code></div>
+            <div><code>/radar_track</code>, type <code>my_msgs/CustomRadarTrack</code></div>
+
+            <div class="row-label">Camera intrinsics</div>
+            <div>Read from <code>/camera/camera/color/camera_info</code></div>
+            <div>Hardcoded <code>fx</code>, <code>fy</code>, <code>cx</code>, <code>cy</code></div>
+
+            <div class="row-label">Depth usage</div>
+            <div>Median depth in a 10 pixel window around box center</div>
+            <div>Single depth pixel at box center</div>
+
+            <div class="row-label">Association</div>
+            <div>Projected radar <code>u</code> inside box plus relaxed depth check</div>
+            <div>Projected radar <code>u</code> and <code>v</code> inside box</div>
+
+            <div class="row-label">Visualization</div>
+            <div>OpenCV camera overlay only</div>
+            <div>OpenCV camera overlay plus Matplotlib radar plot</div>
+
+            <div class="row-label">Performance shape</div>
+            <div>YOLO-bound, relatively light</div>
+            <div>YOLO-bound plus extra Matplotlib overhead</div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="pipeline" class="view">
+      <div class="section-head">
+        <div>
+          <h2>Execution Pipeline</h2>
+          <p>The node runs this loop whenever synchronized color and depth images arrive.</p>
+        </div>
+      </div>
+
+      <section class="panel">
+        <div class="flow-controls">
+          <button class="control-button" id="prevStage">Previous</button>
+          <button class="control-button" id="nextStage">Next</button>
+          <span id="stageSummary" class="status-pill">Stage 1 of 6</span>
+        </div>
+        <div class="pipeline" id="pipelineStages"></div>
+      </section>
+
+      <div class="grid cols-2" style="margin-top:16px">
+        <section class="panel">
+          <h3>Mathematical projection</h3>
+          <p>The radar point is converted from polar coordinates to a simple camera-frame approximation.</p>
+          <pre><code>x_r = range * cos(azimuth)   # forward
+y_r = range * sin(azimuth)   # left/right
+
+pt_cam = [y_r, 0, x_r]
+
+u = fx * pt_cam[0] / pt_cam[2] + cx
+v = fy * pt_cam[1] / pt_cam[2] + cy</code></pre>
+        </section>
+        <section class="panel">
+          <h3>Why vertical matching is fragile</h3>
+          <p>Because <code>pt_cam[1]</code> is always zero, <code>v</code> is effectively always <code>cy</code>. Radar has no image-height measurement here. The lean script avoids depending on vertical radar position by using horizontal overlap and depth consistency.</p>
+        </section>
+      </div>
+    </section>
+
+    <section id="fusion" class="view">
+      <div class="section-head">
+        <div>
+          <h2>Radar-to-Camera Fusion Demo</h2>
+          <p>Move the controls to see how range, azimuth, depth, and box position affect matching.</p>
+        </div>
+      </div>
+
+      <div class="demo-layout">
+        <section class="panel">
+          <canvas id="fusionCanvas" width="980" height="540" aria-label="Radar and camera projection visualization"></canvas>
+        </section>
+        <section class="panel controls">
+          <div class="control">
+            <label for="demoMode"><span>Association mode</span></label>
+            <select id="demoMode">
+              <option value="lean">radartracks_processing.py</option>
+              <option value="all">all_classes.py</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="rangeSlider"><span>Radar range</span><strong><span id="rangeValue"></span> m</strong></label>
+            <input id="rangeSlider" type="range" min="2" max="45" step="0.5" value="14">
+          </div>
+          <div class="control">
+            <label for="azSlider"><span>Radar azimuth</span><strong><span id="azValue"></span> deg</strong></label>
+            <input id="azSlider" type="range" min="-40" max="40" step="0.5" value="8">
+          </div>
+          <div class="control">
+            <label for="depthSlider"><span>RealSense depth at box center</span><strong><span id="depthValue"></span> m</strong></label>
+            <input id="depthSlider" type="range" min="0" max="20" step="0.25" value="14.5">
+          </div>
+          <div class="control">
+            <label for="boxSlider"><span>YOLO box horizontal center</span><strong><span id="boxValue"></span> px</strong></label>
+            <input id="boxSlider" type="range" min="120" max="1160" step="5" value="800">
+          </div>
+          <div class="result-box" id="fusionResult"></div>
+        </section>
+      </div>
+    </section>
+
+    <section id="performance" class="view">
+      <div class="section-head">
+        <div>
+          <h2>Expected Performance</h2>
+          <p>This estimator is a reasoning model from the code structure. It is not a benchmark. Actual FPS depends heavily on PyTorch, CUDA, ROS transport, image size, and display overhead.</p>
+        </div>
+      </div>
+
+      <div class="perf-grid">
+        <section class="panel controls">
+          <div class="control">
+            <label for="perfDevice"><span>Machine class</span></label>
+            <select id="perfDevice">
+              <option value="cpuLaptop">CPU laptop</option>
+              <option value="cpuDesktop" selected>CPU desktop</option>
+              <option value="nvidia">NVIDIA GPU desktop</option>
+              <option value="jetson">Jetson-like edge GPU</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="perfScript"><span>Script</span></label>
+            <select id="perfScript">
+              <option value="lean">radartracks_processing.py</option>
+              <option value="all">radartracks_processing_all_classes.py</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="perfResolution"><span>Input resolution</span></label>
+            <select id="perfResolution">
+              <option value="640">640 class</option>
+              <option value="1280" selected>1280x720 class</option>
+              <option value="1920">1920x1080 class</option>
+            </select>
+          </div>
+          <div class="control">
+            <label for="perfLoad"><span>Scene load</span><strong><span id="loadValue"></span></strong></label>
+            <input id="perfLoad" type="range" min="1" max="10" step="1" value="4">
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>FPS expectation</h3>
+          <div id="fpsNumber" class="perf-number">--</div>
+          <p id="fpsText"></p>
+          <canvas id="perfCanvas" width="840" height="260" aria-label="Performance estimate chart"></canvas>
+        </section>
+      </div>
+
+      <div class="grid cols-3" style="margin-top:16px">
+        <article class="metric">
+          <div class="label">Main bottleneck</div>
+          <div class="value">YOLO inference</div>
+          <div class="note">Radar projection and box checks are cheap compared with neural detection.</div>
+        </article>
+        <article class="metric">
+          <div class="label">CPU-only normal PC</div>
+          <div class="value">About 2 to 8 FPS</div>
+          <div class="note">Typical expectation for the lean script at camera-like resolutions.</div>
+        </article>
+        <article class="metric">
+          <div class="label">GPU normal PC</div>
+          <div class="value">About 15 to 60+ FPS</div>
+          <div class="note">Assumes CUDA-enabled PyTorch and the small nano model.</div>
+        </article>
+      </div>
+    </section>
+
+    <section id="actionplan" class="view">
+      <div class="section-head">
+        <div>
+          <h2>Concrete Next Steps</h2>
+          <p>Use this order on a normal CPU PC: first prove the sensor fusion works with the PyTorch model, then export ONNX, then compare speed and accuracy.</p>
+        </div>
+        <span class="status-pill good">Recommended path</span>
+      </div>
+
+      <div class="grid cols-2">
+        <section class="panel">
+          <h3>Run order</h3>
+          <div class="step-list">
+            <article class="step-card">
+              <h3>Confirm ROS topics are alive</h3>
+              <p>Check color, aligned depth, camera info, and radar scan before running YOLO. If one topic is missing, fusion cannot be trusted.</p>
+            </article>
+            <article class="step-card">
+              <h3>Run the CPU debug node first</h3>
+              <p>Use the new person/car script. Keep debug windows enabled until you see YOLO-only, radar-only, and fusion behavior separately.</p>
+            </article>
+            <article class="step-card">
+              <h3>Tune CPU cost before tuning fusion</h3>
+              <p>Start with <code>yolo_imgsz=480</code> and <code>max_yolo_hz=5</code>. If slow, reduce to <code>416</code> and <code>3 Hz</code>.</p>
+            </article>
+            <article class="step-card">
+              <h3>Tune projection and gates</h3>
+              <p>Adjust lateral offset, RCS gate, and depth gate only after the separate debug views show that YOLO and radar are individually correct.</p>
+            </article>
+            <article class="step-card">
+              <h3>Export ONNX only after baseline works</h3>
+              <p>ONNX is for speed and deployment. It should not be the first debugging step because it adds another dependency and runtime layer.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Exact commands</h3>
+          <div class="command-stack">
+            <pre><code># 1. Check topics
+ros2 topic list
+ros2 topic hz /camera/camera/color/image_raw
+ros2 topic hz /camera/camera/aligned_depth_to_color/image_raw
+ros2 topic hz /radar_scan</code></pre>
+            <pre><code># 2. CPU baseline run
+python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
+  -p device:=cpu \
+  -p yolo_imgsz:=480 \
+  -p max_yolo_hz:=5.0 \
+  -p torch_num_threads:=4</code></pre>
+            <pre><code># 3. If CPU is too slow
+python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
+  -p device:=cpu \
+  -p yolo_imgsz:=416 \
+  -p max_yolo_hz:=3.0 \
+  -p show_radar_debug:=false</code></pre>
+            <pre><code># 4. Export ONNX after baseline is correct
+yolo export model=yolo12n.pt format=onnx imgsz=480 simplify=True</code></pre>
+            <pre><code># 5. Test ONNX in the same node
+python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
+  -p model_path:=yolo12n.onnx \
+  -p device:=cpu \
+  -p yolo_imgsz:=480 \
+  -p max_yolo_hz:=5.0</code></pre>
+          </div>
+        </section>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:16px">
+        <section class="panel">
+          <h3>Tuning priorities</h3>
+          <div class="mini-table">
+            <div>CPU too slow</div>
+            <div>Lower <code>yolo_imgsz</code>, lower <code>max_yolo_hz</code>, disable extra debug windows, then try ONNX.</div>
+            <div>YOLO misses person/car</div>
+            <div>Raise <code>yolo_imgsz</code> to 640 or lower <code>yolo_conf</code> from 0.35 to 0.25.</div>
+            <div>Radar dots shifted left/right</div>
+            <div>Tune <code>radar_lateral_offset_m</code>. Positive and negative signs must be tested with a known target in front of the car.</div>
+            <div>Radar has many false returns</div>
+            <div>Increase <code>min_rcs</code>, reduce <code>max_azimuth_deg</code>, and watch the radar-only debug view before changing fusion logic.</div>
+            <div>Fusion matches wrong object</div>
+            <div>Tighten <code>depth_gate_base_m</code> or <code>depth_gate_ratio</code>, and verify RealSense depth is not zero at the box center.</div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>Problem solver</h3>
+          <div class="control">
+            <label for="problemSelect"><span>Select symptom</span></label>
+            <select id="problemSelect">
+              <option value="noWindows">No debug windows appear</option>
+              <option value="noYolo">No YOLO boxes</option>
+              <option value="noRadar">No radar points</option>
+              <option value="noFusion">YOLO and radar visible, but no fusion</option>
+              <option value="wrongFusion">Fusion attaches to wrong object</option>
+              <option value="slowCpu">CPU too slow</option>
+              <option value="onnxFail">ONNX export or ONNX run fails</option>
+            </select>
+          </div>
+          <div class="result-box" id="problemOutput" style="margin-top:12px"></div>
+        </section>
+      </div>
+
+      <div class="grid cols-2" style="margin-top:16px">
+        <section class="panel">
+          <h3>ONNX decision</h3>
+          <p>Try ONNX if the PyTorch <code>.pt</code> version already detects correctly but CPU inference time is too high. Keep the same <code>imgsz</code> when comparing. Accept ONNX only if it is faster and class boxes look the same.</p>
+          <pre><code># Accept ONNX when:
+# - YOLO boxes are the same or close
+# - fusion match count is not worse
+# - inference ms is lower in the YOLO debug HUD</code></pre>
+        </section>
+
+        <section class="panel">
+          <h3>Recommended default values</h3>
+          <div class="mini-table">
+            <div>Model</div>
+            <div><code>yolo12n.pt</code> first, then <code>yolo12n.onnx</code> for CPU deployment.</div>
+            <div>Classes</div>
+            <div><code>person</code> and <code>car</code> only.</div>
+            <div>Image size</div>
+            <div><code>480</code> for first CPU test; <code>416</code> if slow; <code>640</code> if misses small objects.</div>
+            <div>YOLO rate</div>
+            <div><code>5 Hz</code> for normal CPU; <code>3 Hz</code> if the PC is weak.</div>
+            <div>Debug mode</div>
+            <div>All windows on for calibration, only fusion window for demo, all off for maximum throughput.</div>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section id="risks" class="view">
+      <div class="section-head">
+        <div>
+          <h2>Important Risks</h2>
+          <p>These are the code-level assumptions most likely to change real-world behavior.</p>
+        </div>
+      </div>
+
+      <div class="grid cols-2" id="riskList"></div>
+    </section>
+
+    <section id="codemap" class="view">
+      <div class="section-head">
+        <div>
+          <h2>Code Map</h2>
+          <p>Use this map to connect the analysis back to the script sections.</p>
+        </div>
+      </div>
+
+      <div class="grid cols-2">
+        <section class="panel">
+          <h3>radartracks_processing.py</h3>
+          <div class="code-map">
+            <div class="code-row"><strong>Lines 18-25</strong><p>Camera intrinsics placeholder, azimuth limit, YOLO model, target class filter.</p></div>
+            <div class="code-row"><strong>Lines 32-39</strong><p>Color and depth synchronization, radar scan subscription, detection publisher.</p></div>
+            <div class="code-row"><strong>Lines 57-67</strong><p>Median depth extraction around the YOLO box center.</p></div>
+            <div class="code-row"><strong>Lines 78-100</strong><p>YOLO inference and filtered bounding boxes.</p></div>
+            <div class="code-row"><strong>Lines 102-114</strong><p>Radar buffer cleanup and closest radar scan selection.</p></div>
+            <div class="code-row"><strong>Lines 136-196</strong><p>Radar filtering, projection, box-depth association, and publishing.</p></div>
+          </div>
+        </section>
+
+        <section class="panel">
+          <h3>radartracks_processing_all_classes.py</h3>
+          <div class="code-map">
+            <div class="code-row"><strong>Lines 21-32</strong><p>Hardcoded camera intrinsics, YOLO model, larger target class list.</p></div>
+            <div class="code-row"><strong>Lines 41-53</strong><p>Camera/depth subscribers, custom radar track subscription, synchronizer.</p></div>
+            <div class="code-row"><strong>Lines 55-73</strong><p>Matplotlib radar-only live plot and update timer.</p></div>
+            <div class="code-row"><strong>Lines 104-133</strong><p>YOLO inference and single-pixel depth labeling.</p></div>
+            <div class="code-row"><strong>Lines 134-148</strong><p>Projects radar messages between previous and current image timestamps.</p></div>
+            <div class="code-row"><strong>Lines 150-248</strong><p>Radar projection, bbox matching, projected point drawing, speed highlighting.</p></div>
+            <div class="code-row"><strong>Lines 250-326</strong><p>Radar plot refresh, detection publication, and per-cycle state reset.</p></div>
+          </div>
+        </section>
+      </div>
+
+      <p class="footer-note">Recommended operational default: use <code>radartracks_processing.py</code> when your radar publishes <code>/radar_scan</code>. Use the all-classes file mainly for debugging custom radar track streams.</p>
+    </section>
+  </main>
+
+  <script>
+    const views = document.querySelectorAll(".view");
+    const tabs = document.querySelectorAll(".tab");
+
+    tabs.forEach((tab) => {
+      tab.addEventListener("click", () => {
+        tabs.forEach((t) => t.classList.remove("active"));
+        views.forEach((v) => v.classList.remove("active"));
+        tab.classList.add("active");
+        document.getElementById(tab.dataset.view).classList.add("active");
+        requestAnimationFrame(() => {
+          drawFusion();
+          updatePerf();
+        });
+      });
+    });
+
+    const scriptData = {
+      lean: {
+        title: "radartracks_processing.py",
+        badge: "Best default for /radar_scan",
+        badgeClass: "good",
+        summary: "This is the more practical live-fusion node. It reads camera calibration from CameraInfo, uses robust median depth, selects the closest radar scan, and avoids strict vertical radar-box matching.",
+        points: [
+          "Uses /radar_scan with radar_msgs/RadarScan.",
+          "Keeps only person, car, bus, bicycle, motorcycle, and truck.",
+          "Filters radar by +/-34.5 deg azimuth and RCS >= -25.",
+          "Associates by horizontal pixel overlap and depth tolerance.",
+          "Displays fused red dots and publishes /detections."
+        ]
+      },
+      all: {
+        title: "radartracks_processing_all_classes.py",
+        badge: "Debug-oriented custom-track node",
+        badgeClass: "warn",
+        summary: "This file expects a custom radar-track stream and adds a Matplotlib radar plot. It is useful for inspection but heavier and more fragile for real-time use.",
+        points: [
+          "Uses /radar_track with my_msgs/CustomRadarTrack.",
+          "Adds traffic light, stop sign, train, and parking meter to the target list.",
+          "Uses hardcoded intrinsics and single-pixel depth.",
+          "Requires both projected u and v to fall inside the YOLO box.",
+          "Publishes detections from the radar plot update cycle."
+        ]
+      }
+    };
+
+    const scriptFocus = document.getElementById("scriptFocus");
+    const scriptVerdict = document.getElementById("scriptVerdict");
+
+    function setScript(name) {
+      const data = scriptData[name];
+      document.querySelectorAll("[data-script]").forEach((btn) => {
+        btn.classList.toggle("active", btn.dataset.script === name);
+      });
+      scriptVerdict.textContent = data.badge;
+      scriptVerdict.className = "status-pill " + data.badgeClass;
+      scriptFocus.innerHTML = `
+        <h3>${data.title}</h3>
+        <p>${data.summary}</p>
+        <ul>${data.points.map((p) => `<li>${p}</li>`).join("")}</ul>
+      `;
+    }
+
+    document.querySelectorAll("[data-script]").forEach((btn) => {
+      btn.addEventListener("click", () => setScript(btn.dataset.script));
+    });
+    setScript("lean");
+
+    const stages = [
+      {
+        tag: "ROS input",
+        title: "Image sync",
+        text: "Color and aligned depth frames are synchronized with ApproximateTimeSynchronizer."
+      },
+      {
+        tag: "Detection",
+        title: "YOLO inference",
+        text: "The BGR camera image is sent to Ultralytics YOLO and filtered to target classes."
+      },
+      {
+        tag: "Depth",
+        title: "Box depth",
+        text: "The lean script uses median depth near the box center. The all-classes script uses one center pixel."
+      },
+      {
+        tag: "Radar",
+        title: "Radar buffering",
+        text: "Radar messages are buffered by timestamp and matched to the image frame time."
+      },
+      {
+        tag: "Geometry",
+        title: "Projection",
+        text: "Radar range and azimuth are converted to image coordinate u, v using camera intrinsics."
+      },
+      {
+        tag: "Output",
+        title: "Fusion publish",
+        text: "If radar and YOLO agree, the node draws the overlay and publishes a custom Detection message."
+      }
+    ];
+
+    let activeStage = 0;
+    const pipelineStages = document.getElementById("pipelineStages");
+    const stageSummary = document.getElementById("stageSummary");
+
+    function renderStages() {
+      pipelineStages.innerHTML = stages.map((stage, index) => `
+        <article class="stage ${index === activeStage ? "active-stage" : ""}">
+          <span class="stage-tag">${stage.tag}</span>
+          <h3>${stage.title}</h3>
+          <p>${stage.text}</p>
+        </article>
+      `).join("");
+      stageSummary.textContent = `Stage ${activeStage + 1} of ${stages.length}`;
+    }
+
+    document.getElementById("prevStage").addEventListener("click", () => {
+      activeStage = (activeStage - 1 + stages.length) % stages.length;
+      renderStages();
+    });
+
+    document.getElementById("nextStage").addEventListener("click", () => {
+      activeStage = (activeStage + 1) % stages.length;
+      renderStages();
+    });
+
+    renderStages();
+
+    const risks = [
+      {
+        title: "No full extrinsic calibration",
+        flag: "geometry",
+        body: "Both scripts assume radar and camera axes are already aligned. A real sensor offset or yaw error will shift projected radar points and can create wrong associations."
+      },
+      {
+        title: "Vertical projection is synthetic",
+        flag: "association",
+        body: "Radar supplies range and azimuth, not image height. In the all-classes script, requiring projected v to be inside the YOLO box can reject valid radar detections."
+      },
+      {
+        title: "Depth relaxation trades accuracy for recall",
+        flag: "false positives",
+        body: "The lean script accepts fusion if depth is missing, depth is beyond 5 m, or radar-depth difference is under 3 m. This helps noisy RealSense depth but can accept multipath or nearby objects."
+      },
+      {
+        title: "YOLO weights are not local",
+        flag: "deployment",
+        body: "The workspace does not include yolo12n.pt. On a new machine, Ultralytics may try to download it or fail if the environment has no network."
+      },
+      {
+        title: "Matplotlib plot can bottleneck",
+        flag: "performance",
+        body: "The all-classes script redraws a radar plot every 0.1 s. That is useful for debugging, but it adds UI overhead inside the same ROS node."
+      },
+      {
+        title: "No object-level temporal filter",
+        flag: "tracking",
+        body: "The lean script remembers recent fusion dots for display, but it does not smooth object state. If you need stable trajectories, add EKF, UKF, JPDA, SORT, ByteTrack, or a radar-track manager."
+      }
+    ];
+
+    const riskList = document.getElementById("riskList");
+    riskList.innerHTML = risks.map((risk, index) => `
+      <article class="risk ${index === 0 ? "open" : ""}">
+        <button type="button" aria-expanded="${index === 0 ? "true" : "false"}">
+          <strong>${risk.title}</strong>
+          <span class="flag">${risk.flag}</span>
+        </button>
+        <div class="body">${risk.body}</div>
+      </article>
+    `).join("");
+
+    riskList.querySelectorAll(".risk button").forEach((button) => {
+      button.addEventListener("click", () => {
+        const item = button.closest(".risk");
+        item.classList.toggle("open");
+        button.setAttribute("aria-expanded", item.classList.contains("open") ? "true" : "false");
+      });
+    });
+
+    const problemActions = {
+      noWindows: [
+        "Confirm you are running on a machine with a visible desktop session, not a headless SSH-only terminal.",
+        "Run with debug enabled: -p debug_visuals:=true -p show_fusion_debug:=true.",
+        "If using WSL or remote ROS, enable X forwarding or run the node on the machine connected to the display."
+      ],
+      noYolo: [
+        "Confirm the color topic has frames: ros2 topic hz /camera/camera/color/image_raw.",
+        "Confirm yolo12n.pt exists locally or your environment can download it.",
+        "Lower the confidence: -p yolo_conf:=0.25.",
+        "If objects are small, increase image size: -p yolo_imgsz:=640."
+      ],
+      noRadar: [
+        "Confirm radar messages: ros2 topic hz /radar_scan.",
+        "Check the message content: ros2 topic echo /radar_scan --once.",
+        "Lower the RCS gate temporarily: -p min_rcs:=-40.0.",
+        "Increase azimuth gate temporarily: -p max_azimuth_deg:=45.0."
+      ],
+      noFusion: [
+        "Look at YOLO-only and radar-only windows first; both must be correct separately.",
+        "Check radar timestamp difference in the fusion HUD. If high, increase -p radar_match_slop_sec:=0.25.",
+        "If radar dots are horizontally shifted, tune -p radar_lateral_offset_m.",
+        "If depth blocks matches, loosen gates: -p depth_gate_base_m:=2.5 -p depth_gate_ratio:=0.25."
+      ],
+      wrongFusion: [
+        "Tighten depth gate: -p depth_gate_base_m:=1.0 -p depth_gate_ratio:=0.10.",
+        "Increase YOLO confidence: -p yolo_conf:=0.45.",
+        "Reduce radar azimuth gate if side returns are causing ghosts.",
+        "Use one known person or one known car first; do not tune with crowded scenes."
+      ],
+      slowCpu: [
+        "Reduce image size: -p yolo_imgsz:=416.",
+        "Reduce YOLO rate: -p max_yolo_hz:=3.0.",
+        "Disable radar-only and YOLO-only windows after calibration.",
+        "Export ONNX and compare the inference ms in the YOLO debug HUD."
+      ],
+      onnxFail: [
+        "First verify the .pt model runs correctly.",
+        "Install export/runtime dependencies in the same Python environment used by ROS.",
+        "Export with fixed size first: yolo export model=yolo12n.pt format=onnx imgsz=480 simplify=True.",
+        "If ONNX output differs, keep .pt for debugging and only use ONNX after the boxes match."
+      ]
+    };
+
+    const problemSelect = document.getElementById("problemSelect");
+    const problemOutput = document.getElementById("problemOutput");
+
+    function renderProblemActions() {
+      if (!problemSelect || !problemOutput) return;
+      const actions = problemActions[problemSelect.value] || [];
+      problemOutput.innerHTML = actions.map((action, index) => `
+        <div class="result-line"><span>${index + 1}</span><strong>${action}</strong></div>
+      `).join("");
+    }
+
+    if (problemSelect) {
+      problemSelect.addEventListener("change", renderProblemActions);
+      renderProblemActions();
+    }
+
+    const fusionCanvas = document.getElementById("fusionCanvas");
+    const fusionCtx = fusionCanvas.getContext("2d");
+    const fusionInputs = {
+      mode: document.getElementById("demoMode"),
+      range: document.getElementById("rangeSlider"),
+      az: document.getElementById("azSlider"),
+      depth: document.getElementById("depthSlider"),
+      box: document.getElementById("boxSlider")
+    };
+
+    Object.values(fusionInputs).forEach((input) => {
+      input.addEventListener("input", drawFusion);
+      input.addEventListener("change", drawFusion);
+    });
+
+    function drawGrid(ctx, x, y, w, h, color) {
+      ctx.save();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 10; i++) {
+        const px = x + (w * i) / 10;
+        ctx.beginPath();
+        ctx.moveTo(px, y);
+        ctx.lineTo(px, y + h);
+        ctx.stroke();
+      }
+      for (let i = 0; i <= 8; i++) {
+        const py = y + (h * i) / 8;
+        ctx.beginPath();
+        ctx.moveTo(x, py);
+        ctx.lineTo(x + w, py);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function drawFusion() {
+      if (!fusionCanvas) return;
+      const ctx = fusionCtx;
+      const w = fusionCanvas.width;
+      const h = fusionCanvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#0f1720";
+      ctx.fillRect(0, 0, w, h);
+
+      const range = Number(fusionInputs.range.value);
+      const azDeg = Number(fusionInputs.az.value);
+      const depth = Number(fusionInputs.depth.value);
+      const boxCenter = Number(fusionInputs.box.value);
+      const mode = fusionInputs.mode.value;
+      const azRad = (azDeg * Math.PI) / 180;
+      const fx = 916.357;
+      const cx = 630.561;
+      const cy = 367.721;
+      const imageWidth = 1280;
+      const imageHeight = 720;
+      const xForward = range * Math.cos(azRad);
+      const yLateral = range * Math.sin(azRad);
+      const u = fx * yLateral / Math.max(0.01, xForward) + cx;
+      const v = cy;
+      const bboxW = 240;
+      const bboxH = 280;
+      const boxX1 = boxCenter - bboxW / 2;
+      const boxX2 = boxCenter + bboxW / 2;
+      const boxY1 = 220;
+      const boxY2 = boxY1 + bboxH;
+      const horizontalMatch = u >= boxX1 && u <= boxX2;
+      const verticalMatch = v >= boxY1 && v <= boxY2;
+      const depthDiff = Math.abs(depth - range);
+      const leanDepthOk = depth === 0 || depth > 5 || depthDiff < 3;
+      const accepted = mode === "lean" ? horizontalMatch && leanDepthOk : horizontalMatch && verticalMatch;
+
+      document.getElementById("rangeValue").textContent = range.toFixed(1);
+      document.getElementById("azValue").textContent = azDeg.toFixed(1);
+      document.getElementById("depthValue").textContent = depth.toFixed(2);
+      document.getElementById("boxValue").textContent = Math.round(boxCenter);
+
+      const left = { x: 26, y: 46, w: 420, h: 448 };
+      const right = { x: 486, y: 46, w: 468, h: 448 };
+
+      ctx.fillStyle = "#172331";
+      ctx.fillRect(left.x, left.y, left.w, left.h);
+      ctx.fillRect(right.x, right.y, right.w, right.h);
+      drawGrid(ctx, left.x, left.y, left.w, left.h, "rgba(220,235,245,0.08)");
+      drawGrid(ctx, right.x, right.y, right.w, right.h, "rgba(220,235,245,0.08)");
+
+      ctx.fillStyle = "#e8f1f7";
+      ctx.font = "700 18px Inter, sans-serif";
+      ctx.fillText("Radar top view", left.x, 26);
+      ctx.fillText("Camera image projection", right.x, 26);
+
+      const radarOrigin = { x: left.x + left.w / 2, y: left.y + left.h - 30 };
+      const scale = left.h / 50;
+      const radarPx = radarOrigin.x + yLateral * scale;
+      const radarPy = radarOrigin.y - xForward * scale;
+
+      ctx.strokeStyle = "rgba(255,255,255,0.22)";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(radarOrigin.x, radarOrigin.y);
+      ctx.lineTo(radarOrigin.x, left.y + 20);
+      ctx.stroke();
+
+      ctx.strokeStyle = accepted ? "#50d18d" : "#ffcc66";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(radarOrigin.x, radarOrigin.y);
+      ctx.lineTo(radarPx, radarPy);
+      ctx.stroke();
+
+      ctx.fillStyle = "#e8f1f7";
+      ctx.beginPath();
+      ctx.arc(radarOrigin.x, radarOrigin.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = accepted ? "#50d18d" : "#ffcc66";
+      ctx.beginPath();
+      ctx.arc(radarPx, radarPy, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#c9d8e4";
+      ctx.font = "13px Inter, sans-serif";
+      ctx.fillText(`range ${range.toFixed(1)} m`, radarPx + 12, radarPy - 8);
+      ctx.fillText(`az ${azDeg.toFixed(1)} deg`, radarPx + 12, radarPy + 10);
+
+      const camX = right.x + (boxX1 / imageWidth) * right.w;
+      const camY = right.y + (boxY1 / imageHeight) * right.h;
+      const camW = (bboxW / imageWidth) * right.w;
+      const camH = (bboxH / imageHeight) * right.h;
+      const pointX = right.x + (u / imageWidth) * right.w;
+      const pointY = right.y + (v / imageHeight) * right.h;
+
+      ctx.fillStyle = "#203044";
+      ctx.fillRect(right.x, right.y, right.w, right.h);
+      ctx.fillStyle = "rgba(35,100,170,0.18)";
+      ctx.fillRect(right.x, right.y + right.h * 0.48, right.w, right.h * 0.52);
+      ctx.strokeStyle = "#50d18d";
+      ctx.lineWidth = 3;
+      ctx.strokeRect(camX, camY, camW, camH);
+      ctx.fillStyle = "rgba(80,209,141,0.10)";
+      ctx.fillRect(camX, camY, camW, camH);
+
+      ctx.strokeStyle = "rgba(255,255,255,0.22)";
+      ctx.setLineDash([6, 6]);
+      ctx.beginPath();
+      ctx.moveTo(right.x, pointY);
+      ctx.lineTo(right.x + right.w, pointY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = accepted ? "#ff5a5f" : "#ffcc66";
+      ctx.beginPath();
+      ctx.arc(Math.max(right.x, Math.min(right.x + right.w, pointX)), pointY, 9, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "#e8f1f7";
+      ctx.font = "13px Inter, sans-serif";
+      ctx.fillText(`u ${u.toFixed(0)} px`, Math.max(right.x + 8, Math.min(right.x + right.w - 90, pointX + 12)), pointY - 10);
+      ctx.fillText(`v ${v.toFixed(0)} px`, Math.max(right.x + 8, Math.min(right.x + right.w - 90, pointX + 12)), pointY + 12);
+
+      ctx.fillStyle = accepted ? "#50d18d" : "#ffcc66";
+      ctx.font = "800 20px Inter, sans-serif";
+      ctx.fillText(accepted ? "FUSION ACCEPTED" : "FUSION REJECTED", 26, 524);
+
+      const resultClass = accepted ? "good" : "warn";
+      document.getElementById("fusionResult").innerHTML = `
+        <div class="result-line"><span>Projected u</span><strong>${u.toFixed(1)} px</strong></div>
+        <div class="result-line"><span>Horizontal box match</span><strong class="${horizontalMatch ? "good" : "bad"}">${horizontalMatch ? "yes" : "no"}</strong></div>
+        <div class="result-line"><span>Vertical box match</span><strong class="${verticalMatch ? "good" : "bad"}">${verticalMatch ? "yes" : "no"}</strong></div>
+        <div class="result-line"><span>Depth difference</span><strong>${depthDiff.toFixed(2)} m</strong></div>
+        <div class="result-line"><span>Final decision</span><strong class="${resultClass}">${accepted ? "accepted" : "rejected"}</strong></div>
+      `;
+    }
+
+    const perfCanvas = document.getElementById("perfCanvas");
+    const perfCtx = perfCanvas.getContext("2d");
+    const perfInputs = {
+      device: document.getElementById("perfDevice"),
+      script: document.getElementById("perfScript"),
+      resolution: document.getElementById("perfResolution"),
+      load: document.getElementById("perfLoad")
+    };
+
+    Object.values(perfInputs).forEach((input) => {
+      input.addEventListener("input", updatePerf);
+      input.addEventListener("change", updatePerf);
+    });
+
+    function estimateFps(device, script, resolution, load) {
+      const base = {
+        cpuLaptop: 5,
+        cpuDesktop: 8,
+        nvidia: 48,
+        jetson: 18
+      }[device];
+      const resFactor = {
+        640: 1,
+        1280: 0.42,
+        1920: 0.2
+      }[resolution];
+      const scriptFactor = script === "all" ? 0.72 : 1;
+      const loadFactor = 1 - (load - 1) * 0.025;
+      const center = Math.max(0.6, base * resFactor * scriptFactor * loadFactor);
+      return {
+        low: center * 0.65,
+        center,
+        high: center * 1.35
+      };
+    }
+
+    function drawPerfChart(fps) {
+      const ctx = perfCtx;
+      const w = perfCanvas.width;
+      const h = perfCanvas.height;
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = "#0f1720";
+      ctx.fillRect(0, 0, w, h);
+
+      const labels = ["Low", "Expected", "High"];
+      const values = [fps.low, fps.center, fps.high];
+      const maxVal = Math.max(10, fps.high * 1.25);
+      const barW = 120;
+      const gap = 70;
+      const startX = 90;
+      const baseY = h - 48;
+
+      ctx.strokeStyle = "rgba(255,255,255,0.16)";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = 30 + (baseY - 30) * i / 4;
+        ctx.beginPath();
+        ctx.moveTo(42, y);
+        ctx.lineTo(w - 28, y);
+        ctx.stroke();
+      }
+
+      values.forEach((value, index) => {
+        const x = startX + index * (barW + gap);
+        const barH = (value / maxVal) * (baseY - 40);
+        ctx.fillStyle = index === 1 ? "#50d18d" : "#49a2d6";
+        ctx.fillRect(x, baseY - barH, barW, barH);
+        ctx.fillStyle = "#e8f1f7";
+        ctx.font = "700 16px Inter, sans-serif";
+        ctx.fillText(value.toFixed(1), x + 34, baseY - barH - 10);
+        ctx.font = "13px Inter, sans-serif";
+        ctx.fillText(labels[index], x + 34, baseY + 24);
+      });
+
+      ctx.fillStyle = "#c9d8e4";
+      ctx.font = "13px Inter, sans-serif";
+      ctx.fillText("Frames per second estimate", 42, 22);
+    }
+
+    function updatePerf() {
+      if (!perfCanvas) return;
+      const device = perfInputs.device.value;
+      const script = perfInputs.script.value;
+      const resolution = perfInputs.resolution.value;
+      const load = Number(perfInputs.load.value);
+      const fps = estimateFps(device, script, resolution, load);
+      document.getElementById("loadValue").textContent = `${load}/10`;
+      document.getElementById("fpsNumber").textContent = `${fps.low.toFixed(1)}-${fps.high.toFixed(1)} FPS`;
+      const scriptName = script === "lean" ? "lean script" : "all-classes script";
+      const deviceName = perfInputs.device.options[perfInputs.device.selectedIndex].textContent;
+      document.getElementById("fpsText").textContent = `For ${deviceName}, ${scriptName}, and ${resolution} class input, the expected center is about ${fps.center.toFixed(1)} FPS.`;
+      drawPerfChart(fps);
+    }
+
+    drawFusion();
+    updatePerf();
+  </script>
+</body>
+</html>

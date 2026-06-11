@@ -1,0 +1,21 @@
+{
+  "settings_version": "0.0.6",
+  "datasets_dir": "C:\\Users\\Quang Huy Nugyen\\Downloads\\High gain with real data compared to Kalman Filter (1)\\High gain with real data compared to Kalman Filter\\datasets",
+  "weights_dir": "weights",
+  "runs_dir": "runs",
+  "uuid": "1e74a2f43ee807dc04c2a73731f50b8cecf7658880362b43cc015f47fcd3c8f3",
+  "sync": true,
+  "api_key": "",
+  "openai_api_key": "",
+  "clearml": true,
+  "comet": true,
+  "dvc": true,
+  "hub": true,
+  "mlflow": true,
+  "neptune": true,
+  "raytune": true,
+  "tensorboard": false,
+  "wandb": false,
+  "vscode_msg": true,
+  "openvino_msg": false
+}

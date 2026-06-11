@@ -17,15 +17,20 @@ Use one of these as the main entry, depending on your goal:
 - Avoids symbolic/LMI design and ODE-based observer integration.
 - Uses a discrete-time observer loop with robust GPS dropout handling.
 
-2. `Compare_method_to_kalman.m` (recommended research/legacy primary entry)
+2. `Compare_method_to_kalman_radar_only_practical.m` (recommended for radar-only target tracking)
+- Deployment-oriented version for tracking a mobile target vehicle with radar only.
+- Handles radar frequency, random losses, burst losses, stale radar detection, and prediction during dropouts.
+- See `README_radar_only_tracking.md` for the input format and tuning guide.
+
+3. `Compare_method_to_kalman.m` (recommended research/legacy primary entry)
 - Best overall demo for this repository.
 - Uses real data from `Data.mat`.
 - Compares Multi-Output High-Gain Observer vs EKF.
 
-3. `comparaison_SHGO.m`
+4. `comparaison_SHGO.m`
 - Real-data comparison between Multi-Output High-Gain Observer and standard SHGO-style high-gain observer.
 
-4. `main.m`
+5. `main.m`
 - Standalone synthetic simulation for the base High-Gain Observer pipeline.
 - Good starting point to understand the method before real-data scripts.
 
@@ -34,6 +39,7 @@ Use one of these as the main entry, depending on your goal:
 ### Entry Scripts (runnable)
 - `main.m`: Synthetic kinematic simulation + high-gain observer.
 - `Compare_method_to_kalman_practical.m`: Practical real-data script with discrete observer + EKF (deployment-oriented).
+- `Compare_method_to_kalman_radar_only_practical.m`: Radar-only target vehicle tracking with simulated or real radar inputs.
 - `Compare_method_to_kalman.m`: Real-data benchmark (Multi-Output HG vs EKF).
 - `comparaison_SHGO.m`: Real-data benchmark (Multi-Output HG vs SHGO).
 - `First_method.m`: Synthetic/legacy method-1 observer experiment, includes comparison with `Meth2.mat`.

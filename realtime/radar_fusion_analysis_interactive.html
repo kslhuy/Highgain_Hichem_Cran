@@ -1,0 +1,1556 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Radar YOLO Fusion Dashboard</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0b0f19;
+      --bg-gradient: radial-gradient(circle at top right, #1e1b4b, #0b0f19 60%);
+      --surface: rgba(22, 29, 49, 0.7);
+      --surface-border: rgba(255, 255, 255, 0.08);
+      --surface-hover: rgba(30, 41, 69, 0.8);
+      --text: #e2e8f0;
+      --muted: #94a3b8;
+      --primary: #3b82f6;
+      --primary-glow: rgba(59, 130, 246, 0.15);
+      --primary-hover: #2563eb;
+      --teal: #14b8a6;
+      --teal-glow: rgba(20, 184, 166, 0.15);
+      --green: #10b981;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --radius: 12px;
+      --sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --mono: 'JetBrains Mono', SFMono-Regular, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      background-color: var(--bg);
+      background-image: var(--bg-gradient);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.6;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .wrap {
+      width: min(1200px, calc(100% - 32px));
+      margin: 0 auto;
+    }
+
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid var(--surface-border);
+      background: rgba(11, 15, 25, 0.8);
+      backdrop-filter: blur(12px);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+    }
+
+    .header-inner {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    @media (min-width: 768px) {
+      .header-inner {
+        flex-direction: row;
+        align-items: center;
+        justify-content: space-between;
+      }
+    }
+
+    .brand-title {
+      font-size: 1.5rem;
+      font-weight: 800;
+      background: linear-gradient(135deg, #60a5fa, #14b8a6);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      letter-spacing: -0.025em;
+    }
+
+    .brand-subtitle {
+      font-size: 0.875rem;
+      color: var(--muted);
+      margin-top: 4px;
+    }
+
+    .tabs {
+      display: flex;
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--surface-border);
+      padding: 4px;
+      border-radius: 9999px;
+      gap: 2px;
+    }
+
+    .tab {
+      background: transparent;
+      border: none;
+      color: var(--muted);
+      font-family: var(--sans);
+      font-size: 0.9rem;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 9999px;
+      cursor: pointer;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      outline: none;
+      white-space: nowrap;
+    }
+
+    .tab:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .tab.active {
+      color: #ffffff;
+      background: var(--primary);
+      box-shadow: 0 4px 14px var(--primary-glow);
+    }
+
+    main {
+      padding: 32px 0 64px;
+    }
+
+    .view {
+      display: none;
+      animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .view.active {
+      display: block;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .panel {
+      background: var(--surface);
+      backdrop-filter: blur(16px);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    }
+
+    .panel-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .panel-title svg {
+      color: var(--primary);
+    }
+
+    .grid {
+      display: grid;
+      gap: 24px;
+      margin-bottom: 24px;
+    }
+
+    .cols-2 {
+      grid-template-columns: 1fr;
+    }
+
+    .cols-3 {
+      grid-template-columns: 1fr;
+    }
+
+    @media (min-width: 768px) {
+      .cols-2 {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .cols-3 {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+    }
+
+    .metric-card {
+      background: rgba(30, 41, 59, 0.3);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 20px;
+      transition: border-color 0.3s;
+    }
+
+    .metric-card:hover {
+      border-color: rgba(59, 130, 246, 0.3);
+    }
+
+    .metric-label {
+      font-size: 0.85rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-size: 1.5rem;
+      font-weight: 800;
+      color: #fff;
+    }
+
+    .metric-note {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .badge-blue { background: rgba(59, 130, 246, 0.15); color: #60a5fa; }
+    .badge-teal { background: rgba(20, 184, 166, 0.15); color: #2dd4bf; }
+    .badge-green { background: rgba(16, 185, 129, 0.15); color: #34d399; }
+    .badge-warn { background: rgba(245, 158, 11, 0.15); color: #fbbf24; }
+
+    .comparison-table-wrapper {
+      overflow-x: auto;
+      border-radius: var(--radius);
+      border: 1px solid var(--surface-border);
+    }
+
+    .comparison-table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.95rem;
+    }
+
+    .comparison-table th, .comparison-table td {
+      padding: 16px;
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    .comparison-table th {
+      background: rgba(15, 23, 42, 0.8);
+      font-weight: 700;
+      color: #fff;
+    }
+
+    .comparison-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .comparison-table td:first-child {
+      font-weight: 600;
+      color: var(--muted);
+      background: rgba(15, 23, 42, 0.2);
+      width: 200px;
+    }
+
+    .comparison-table tr:hover td {
+      background: rgba(255, 255, 255, 0.02);
+    }
+
+    .code-console {
+      background: #07090e;
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 24px;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
+    .code-console-header {
+      background: #111827;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--surface-border);
+    }
+
+    .console-dots {
+      display: flex;
+      gap: 6px;
+    }
+
+    .console-dots span {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+
+    .console-title {
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .btn-copy {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--surface-border);
+      color: var(--text);
+      font-family: var(--sans);
+      font-size: 0.8rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-copy:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--primary);
+    }
+
+    .code-console pre {
+      padding: 18px;
+      margin: 0;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+
+    .code-console code {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      color: #93c5fd;
+      line-height: 1.5;
+    }
+
+    .demo-container {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      align-items: start;
+    }
+
+    @media (min-width: 1024px) {
+      .demo-container {
+        grid-template-columns: 1.6fr 0.9fr;
+      }
+    }
+
+    .canvas-wrapper {
+      position: relative;
+      background: #07090e;
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      width: 100%;
+      aspect-ratio: 980/540;
+    }
+
+    .demo-controls {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .control-label {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+
+    .control-label span:last-child {
+      color: #fff;
+    }
+
+    input[type="range"] {
+      -webkit-appearance: none;
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 9999px;
+      outline: none;
+      accent-color: var(--primary);
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--primary);
+      cursor: pointer;
+      box-shadow: 0 0 10px var(--primary-glow);
+      transition: transform 0.1s;
+    }
+
+    input[type="range"]::-webkit-slider-thumb:hover {
+      transform: scale(1.25);
+    }
+
+    .checkbox-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--muted);
+      user-select: none;
+    }
+
+    .checkbox-control input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .result-panel {
+      background: rgba(15, 23, 42, 0.4);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+
+    .result-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 0.9rem;
+    }
+
+    .result-row:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+      margin-top: 8px;
+      font-weight: bold;
+      font-size: 1.05rem;
+    }
+
+    .text-green { color: var(--green); }
+    .text-red { color: var(--red); }
+    .text-amber { color: var(--amber); }
+
+    .bullet-list {
+      list-style-position: inside;
+      margin-left: 8px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .bullet-list li {
+      color: var(--text);
+    }
+
+    .bullet-list li strong {
+      color: #fff;
+    }
+
+    .flow-strip {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin: 18px 0 6px;
+    }
+
+    @media (min-width: 900px) {
+      .flow-strip {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+    }
+
+    .flow-step {
+      position: relative;
+      min-height: 150px;
+      background: rgba(15, 23, 42, 0.42);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 18px;
+    }
+
+    .flow-step::after {
+      content: ">";
+      position: absolute;
+      right: -11px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      background: #172033;
+      border: 1px solid var(--surface-border);
+      color: var(--muted);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      z-index: 2;
+    }
+
+    .flow-step:last-child::after {
+      display: none;
+    }
+
+    @media (min-width: 900px) {
+      .flow-step::after {
+        display: flex;
+      }
+    }
+
+    .flow-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 999px;
+      background: rgba(59, 130, 246, 0.18);
+      border: 1px solid rgba(96, 165, 250, 0.28);
+      color: #bfdbfe;
+      font-family: var(--mono);
+      font-size: 0.78rem;
+      font-weight: 700;
+      margin-bottom: 12px;
+    }
+
+    .flow-title {
+      font-size: 1rem;
+      color: #fff;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .flow-copy {
+      color: var(--muted);
+      font-size: 0.9rem;
+      line-height: 1.45;
+    }
+
+    .state-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      margin-top: 16px;
+    }
+
+    @media (min-width: 768px) {
+      .state-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+    }
+
+    .state-card {
+      background: rgba(15, 23, 42, 0.42);
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      padding: 16px;
+    }
+
+    .state-card h3 {
+      font-size: 0.95rem;
+      color: #fff;
+      margin-bottom: 8px;
+    }
+
+    .state-card p {
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .mini-timeline {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 16px;
+    }
+
+    @media (min-width: 900px) {
+      .mini-timeline {
+        grid-template-columns: 1.1fr 0.9fr 0.9fr;
+      }
+    }
+
+    .timeline-lane {
+      border: 1px solid var(--surface-border);
+      border-radius: 8px;
+      background: rgba(15, 23, 42, 0.35);
+      padding: 14px;
+    }
+
+    .lane-title {
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 10px;
+      font-size: 0.9rem;
+    }
+
+    .tick-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      min-height: 22px;
+    }
+
+    .tick {
+      width: 12px;
+      height: 12px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+    }
+
+    .tick.camera { background: var(--teal); box-shadow: 0 0 10px var(--teal-glow); }
+    .tick.yolo { background: var(--amber); }
+    .tick.radar { background: var(--primary); box-shadow: 0 0 10px var(--primary-glow); }
+    .tick.faded { opacity: 0.25; }
+
+    .tick-caption {
+      color: var(--muted);
+      font-size: 0.82rem;
+      margin-top: 8px;
+    }
+
+    .note-callout {
+      border-left: 3px solid var(--teal);
+      background: rgba(20, 184, 166, 0.08);
+      padding: 12px 14px;
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 0.92rem;
+      margin-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="wrap header-inner">
+      <div>
+        <h1 class="brand-title">Radar YOLO Fusion Dashboard</h1>
+        <p class="brand-subtitle">Interactive analysis and commands console for target tracking nodes</p>
+      </div>
+      <nav class="tabs" aria-label="Dashboard views">
+        <button class="tab active" data-view="overview">Overview & Compare</button>
+        <button class="tab" data-view="cli">CLI Console & Settings</button>
+        <button class="tab" data-view="demo">Interactive Projection Demo</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <!-- Tab 1: Overview & Compare -->
+    <section id="overview" class="view active">
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a.75.75 0 000 1.5h.253a.25.25 0 01.244.304l-.459 2.066A1.75 1.75 0 0010.747 15H11a.75.75 0 000-1.5h-.253a.25.25 0 01-.244-.304l.459-2.066A1.75 1.75 0 009.253 9H9z" clip-rule="evenodd" />
+          </svg>
+          Functional Summary
+        </h2>
+        <p style="margin-bottom: 16px;">
+          Both files are ROS 2 nodes designed to synchronize and fuse YOLO image bounding boxes with range/azimuth data provided by forward-facing radar sensors. The scripts project polar radar returns onto the 2D camera coordinate space to execute late geometric association.
+        </p>
+        <div class="grid cols-3">
+          <div class="metric-card">
+            <div class="metric-label">Key Sensors</div>
+            <div class="metric-value">RGB-D + Radar</div>
+            <div class="metric-note">RealSense depth maps provide localized confirmation while radar scans provide accurate ranges & velocities.</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Fusion Strategy</div>
+            <div class="metric-value">Geometric Late</div>
+            <div class="metric-note">Evaluated at the bounding-box level. Projection relies on camera focal length and center point intrinsics.</div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">Primary Targets</div>
+            <div class="metric-value">Person & Car</div>
+            <div class="metric-note">The advanced debug node isolates humans and vehicles to optimize detection confidence on CPU.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M2 10a8 8 0 1116 0 8 8 0 01-16 0zm8.75-4.25a.75.75 0 00-1.5 0v4.69L6.47 7.66a.75.75 0 10-1.06 1.06l4.06 4.06a.75.75 0 001.06 0l4.06-4.06a.75.75 0 10-1.06-1.06l-2.78 2.78V5.75z" clip-rule="evenodd" />
+          </svg>
+          First-Run Model Selection
+        </h2>
+        <p style="margin-bottom: 8px; color: var(--muted);">
+          The CPU debug script now starts with an ONNX-first policy. This reduces first-run surprises on the test machine while still keeping a PT fallback.
+        </p>
+        <div class="flow-strip">
+          <div class="flow-step">
+            <div class="flow-index">01</div>
+            <div class="flow-title">Look for ONNX</div>
+            <div class="flow-copy">Default model path is <code>realtime/yolo12n.onnx</code>. If it exists, the node loads it directly.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">02</div>
+            <div class="flow-title">Try PT Export</div>
+            <div class="flow-copy">If ONNX is missing but <code>yolo12n.pt</code> exists, Ultralytics tries to export an ONNX file using the configured image size.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">03</div>
+            <div class="flow-title">Use Exported ONNX</div>
+            <div class="flow-copy">When export succeeds, the newly created ONNX file is used for inference instead of the PT model.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">04</div>
+            <div class="flow-title">Fallback to PT</div>
+            <div class="flow-copy">If export fails, the script logs a warning and falls back to <code>yolo12n.pt</code> so the node can still run.</div>
+          </div>
+        </div>
+        <div class="note-callout">
+          Recommended test setup: keep both <code>realtime/yolo12n.onnx</code> and <code>realtime/yolo12n.pt</code> beside the script. ONNX runs first; PT is only backup.
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M3.25 4A2.25 2.25 0 015.5 1.75h9A2.25 2.25 0 0116.75 4v12A2.25 2.25 0 0114.5 18.25h-9A2.25 2.25 0 013.25 16V4zm2.25-.75a.75.75 0 00-.75.75v2.25h10.5V4a.75.75 0 00-.75-.75h-9zm9.75 4.5H4.75V16c0 .414.336.75.75.75h9a.75.75 0 00.75-.75V7.75z" clip-rule="evenodd" />
+          </svg>
+          Live Runtime Pipeline
+        </h2>
+        <p style="margin-bottom: 8px; color: var(--muted);">
+          This is the actual data flow in <code>radartracks_processing_person_car_cpu_debug.py</code>. Camera frames drive the callback; radar is matched from the nearest buffered scan.
+        </p>
+        <div class="flow-strip">
+          <div class="flow-step">
+            <div class="flow-index">01</div>
+            <div class="flow-title">Sync RGB + Depth</div>
+            <div class="flow-copy">Color and aligned depth images are synchronized with queue size <code>30</code> and slop <code>0.1s</code>.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">02</div>
+            <div class="flow-title">YOLO Throttle</div>
+            <div class="flow-copy">YOLO runs at <code>max_yolo_hz</code>, default <code>5Hz</code>. Between detections, the latest boxes are reused.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">03</div>
+            <div class="flow-title">Closest Radar Scan</div>
+            <div class="flow-copy">Radar scans are buffered. The closest scan to the camera timestamp is accepted only within <code>0.15s</code>.</div>
+          </div>
+          <div class="flow-step">
+            <div class="flow-index">04</div>
+            <div class="flow-title">Gate, Track, Publish</div>
+            <div class="flow-copy">The node projects radar to image space, gates against boxes/depth, updates tracks, then publishes <code>/detections</code>.</div>
+          </div>
+        </div>
+
+        <div class="mini-timeline" aria-label="Timing visualization">
+          <div class="timeline-lane">
+            <div class="lane-title">Camera callback frames</div>
+            <div class="tick-row">
+              <span class="tick camera"></span><span class="tick camera"></span><span class="tick camera"></span><span class="tick camera"></span><span class="tick camera"></span><span class="tick camera"></span><span class="tick camera"></span><span class="tick camera"></span>
+            </div>
+            <div class="tick-caption">Runs whenever synchronized color + depth arrive.</div>
+          </div>
+          <div class="timeline-lane">
+            <div class="lane-title">YOLO detections</div>
+            <div class="tick-row">
+              <span class="tick yolo"></span><span class="tick yolo faded"></span><span class="tick yolo faded"></span><span class="tick yolo"></span><span class="tick yolo faded"></span><span class="tick yolo faded"></span><span class="tick yolo"></span>
+            </div>
+            <div class="tick-caption">Runs slower; cached boxes are marked fresh until <code>0.6s</code>.</div>
+          </div>
+          <div class="timeline-lane">
+            <div class="lane-title">Radar scans</div>
+            <div class="tick-row">
+              <span class="tick radar"></span><span class="tick radar"></span><span class="tick radar"></span><span class="tick radar"></span><span class="tick radar"></span><span class="tick radar"></span><span class="tick radar"></span><span class="tick radar"></span><span class="tick radar"></span>
+            </div>
+            <div class="tick-caption">Fast scans are buffered; only nearest-time scan is fused.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-11.25a.75.75 0 00-1.5 0v4.5a.75.75 0 00.75.75h3a.75.75 0 000-1.5h-2.25V6.75z" clip-rule="evenodd" />
+          </svg>
+          Runtime Notes
+        </h2>
+        <div class="state-grid">
+          <div class="state-card">
+            <h3>OpenCV window title</h3>
+            <p><code>Fusion Pipeline</code> is only the window title. It does not change ROS topics or output data. If the machine has no GUI, display is disabled and publishing continues.</p>
+          </div>
+          <div class="state-card">
+            <h3>Camera FPS vs detection FPS</h3>
+            <p>The debug window shows continuous camera frames. YOLO boxes update only when YOLO runs; otherwise cached boxes are shown with a cache-age note.</p>
+          </div>
+          <div class="state-card">
+            <h3>No radar input</h3>
+            <p>Camera and YOLO visualization can still run. Fusion has zero matches and the node does not publish fused detections.</p>
+          </div>
+          <div class="state-card">
+            <h3>No camera or no depth input</h3>
+            <p>The synchronized callback does not run. Radar may buffer, but there is no YOLO, no projection, no fusion, and no <code>/detections</code> output.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M2 3.75A.75.75 0 012.75 3h14.5a.75.75 0 01.75.75v12.5a.75.75 0 01-.75.75H2.75a.75.75 0 01-.75-.75V3.75zm1.5 1.75v10h13v-10h-13z" clip-rule="evenodd" />
+          </svg>
+          Script Design Comparison
+        </h2>
+        <p style="margin-bottom: 20px; color: var(--muted);">
+          Compare the standard deployment script with the newly introduced multi-threaded, stateful debug version.
+        </p>
+        <div class="comparison-table-wrapper">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>radartracks_processing.py (Standard)</th>
+                <th>radartracks_processing_person_car_cpu_debug.py (New Debug)</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Target Classes</td>
+                <td><span class="badge badge-blue">6 Classes</span><br>Person, car, bus, bicycle, motorcycle, truck</td>
+                <td><span class="badge badge-teal">2 Classes</span><br>Person, car only (focused detection)</td>
+              </tr>
+              <tr>
+                <td>Tracking State</td>
+                <td><span class="badge badge-warn">None</span><br>No temporal tracking; reports single-frame matches</td>
+                <td><span class="badge badge-green">Stateful Tracker</span><br>EMA-style smoothing, track IDs over time, and smoothed relative velocity</td>
+              </tr>
+              <tr>
+                <td>CPU Optimization</td>
+                <td><span class="badge badge-warn">Default PyTorch</span><br>Runs generic, unconstrained multi-threading</td>
+                <td><span class="badge badge-green">ONNX First</span><br>Prefers <code>yolo12n.onnx</code>, can export from PT, then falls back to PT if needed</td>
+              </tr>
+              <tr>
+                <td>Association Method</td>
+                <td>Horizontal box containment and static 3.0m depth gate</td>
+                <td>Horizontal box containment and adaptive depth gate: <br><code>max(depth_gate_base, depth_gate_ratio * range)</code></td>
+              </tr>
+              <tr>
+                <td>Visualization Windows</td>
+                <td>Single window ("Fusion Pipeline") containing color overlay</td>
+                <td>Main window title defaults to <code>Fusion Pipeline</code>; radar sample debug uses a separate window when enabled</td>
+              </tr>
+              <tr>
+                <td>Publisher Payload</td>
+                <td>Standard fields (class, confidence, range, azimuth, rcs, velocity)</td>
+                <td>Same output topic and fields as the standard script, including persistent <code>track_id</code> and smoothed velocity</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M12.577 4.878a.75.75 0 01.919-.53l4.78 1.281a.75.75 0 01.53.919l-1.281 4.78a.75.75 0 01-1.449-.387l.81-3.022-10.22 10.22a.75.75 0 01-1.06-1.06L15.32 8.38l-3.022.81a.75.75 0 01-.72-.312z" clip-rule="evenodd" />
+          </svg>
+          Fusion Mechanics & Gating Theory
+        </h2>
+        <p style="margin-bottom: 20px; color: var(--muted);">
+          Detailed breakdown of the projection math, association scoring, and CPU optimization techniques implemented in the new debug script.
+        </p>
+        <div class="grid cols-2">
+          <div class="metric-card" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="badge badge-blue" style="width: fit-content;">1. Fusion Construction</div>
+            <p style="font-size: 0.95rem;">
+              <strong>Polar to Camera coordinates:</strong> Converts radial range (<i>R</i>) and azimuth (<i>&theta;</i>) to Cartesian coordinates (<i>x</i><sub>forward</sub> = <i>R</i> cos <i>&theta;</i>, <i>y</i><sub>left</sub> = <i>R</i> sin <i>&theta;</i>).
+            </p>
+            <p style="font-size: 0.95rem;">
+              <strong>2D Projection:</strong> Projects 3D camera coordinates to image coordinates (<i>u, v</i>) using the focal length <i>f<sub>x</sub></i> and optical center <i>c<sub>x</sub></i>:
+              <code style="display: block; margin: 8px 0; padding: 6px; background: rgba(0,0,0,0.3); border-radius: 4px; font-family: var(--mono); font-size: 0.8rem; text-align: center;">u = (f<sub>x</sub> * y<sub>left</sub>) / x<sub>forward</sub> + c<sub>x</sub>, &nbsp; v = c<sub>y</sub></code>
+              The vertical <i>v</i> is fixed at the horizon (<i>c<sub>y</sub></i>) because standard 2D radar lacks height/elevation metrics.
+            </p>
+            <p style="font-size: 0.95rem;">
+              <strong>Robust Depth confirmation:</strong> Extracts a median depth value within a window around the bounding box center to avoid camera noise/holes.
+            </p>
+          </div>
+          
+          <div class="metric-card" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="badge badge-teal" style="width: fit-content;">2. Why the CPU Debug Node is Better</div>
+            <ul class="bullet-list" style="font-size: 0.9rem; list-style-type: none; display: flex; flex-direction: column; gap: 8px; margin-left: 0;">
+              <li>
+                <strong>YOLO Rate Throttling:</strong> Caps YOLO at e.g., 5 Hz and reuses cached detections. Cached boxes are used for fusion only while they are fresh.
+              </li>
+              <li>
+                <strong>Multi-Criteria Association:</strong> Replaces simple collision checking with a weighted matching score:
+                <code style="display: block; margin: 6px 0; padding: 4px; background: rgba(0,0,0,0.3); border-radius: 4px; font-family: var(--mono); font-size: 0.75rem; text-align: center;">Score = 0.48*Horizontal + 0.32*Depth + 0.15*Conf + 0.05*RCS</code>
+                It then performs greedy 1-to-1 matching to prevent double-association.
+              </li>
+              <li>
+                <strong>Dynamic Depth Gating:</strong> Scales depth limits with distance: <code style="font-family: var(--mono); font-size: 0.8rem;">max(1.6m, 0.16 * range)</code>. This matches the physical reality of sensor uncertainty scaling at distance.
+              </li>
+              <li>
+                <strong>Stateful Temporal Smoothing:</strong> Maintains continuous tracking IDs using spatial proximity. Smoothes position updates using an Exponential Moving Average filter to suppress measurement jitter.
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Tab 2: CLI Console & Settings -->
+    <section id="cli" class="view">
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M2.5 3A1.5 1.5 0 001 4.5v11A1.5 1.5 0 002.5 17h15a1.5 1.5 0 001.5-1.5v-11A1.5 1.5 0 0017.5 3h-15zm5 4.5a.75.75 0 00-1.5 0v5a.75.75 0 001.5 0v-5zm.22.28a.75.75 0 011.06 0l2.5 2.5a.75.75 0 010 1.06l-2.5 2.5a.75.75 0 01-1.06-1.06L9.44 10 7.72 8.28a.75.75 0 010-1.06zm4.53 4.22h3a.75.75 0 010 1.5h-3a.75.75 0 010-1.5z" clip-rule="evenodd" />
+          </svg>
+          ROS 2 Execution Commands
+        </h2>
+        <p style="margin-bottom: 20px; color: var(--muted);">
+          Use these commands to check ROS topics, launch the optimized CPU debug script, and control ONNX/PT model behavior.
+        </p>
+
+        <!-- Command 1 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">1. Verify Sensor Topic Frequency</h3>
+        <div class="code-console">
+          <div class="code-console-header">
+            <div class="console-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <div class="console-title">topic_check.sh</div>
+            <button class="btn-copy" onclick="copyCode(this, 'ros2 topic hz /camera/camera/color/image_raw\nros2 topic hz /camera/camera/aligned_depth_to_color/image_raw\nros2 topic hz /radar_scan')">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+                <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12a1.5 1.5 0 01.439 1.061V16.5A1.5 1.5 0 0115.5 18h-7A1.5 1.5 0 017 16.5v-13z" />
+                <path d="M14.25 5.5l2.5 2.5h-2.5V5.5z" />
+                <path d="M5.25 6a1.5 1.5 0 00-1.5 1.5v11A1.5 1.5 0 005.25 20h7a1.5 1.5 0 001.5-1.5v-1.75H5.25a.25.25 0 01-.25-.25V6H5.25z" />
+              </svg>
+              Copy Commands
+            </button>
+          </div>
+          <pre><code># Check the output rates of color, depth, and radar topics to ensure synchronization:
+ros2 topic hz /camera/camera/color/image_raw
+ros2 topic hz /camera/camera/aligned_depth_to_color/image_raw
+ros2 topic hz /radar_scan</code></pre>
+        </div>
+
+        <!-- Command 2 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">2. Launch CPU Debug Node (Default Settings)</h3>
+        <div class="code-console">
+          <div class="code-console-header">
+            <div class="console-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <div class="console-title">launch_cpu_debug.sh</div>
+            <button class="btn-copy" onclick="copyCode(this, 'python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \\\n  -p device:=cpu \\\n  -p yolo_imgsz:=480 \\\n  -p max_yolo_hz:=5.0 \\\n  -p torch_num_threads:=4')">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+                <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12a1.5 1.5 0 01.439 1.061V16.5A1.5 1.5 0 0115.5 18h-7A1.5 1.5 0 017 16.5v-13z" />
+                <path d="M14.25 5.5l2.5 2.5h-2.5V5.5z" />
+                <path d="M5.25 6a1.5 1.5 0 00-1.5 1.5v11A1.5 1.5 0 005.25 20h7a1.5 1.5 0 001.5-1.5v-1.75H5.25a.25.25 0 01-.25-.25V6H5.25z" />
+              </svg>
+              Copy Commands
+            </button>
+          </div>
+          <pre><code># ONNX is selected automatically first. PT is used only if ONNX is missing and export fails:
+python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
+  -p device:=cpu \
+  -p yolo_imgsz:=480 \
+  -p max_yolo_hz:=5.0 \
+  -p torch_num_threads:=4</code></pre>
+        </div>
+
+        <!-- Command 3 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">3. Low-Resource Mode (Disabled Debug Windows)</h3>
+        <div class="code-console">
+          <div class="code-console-header">
+            <div class="console-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <div class="console-title">headless_run.sh</div>
+            <button class="btn-copy" onclick="copyCode(this, 'python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \\\n  -p device:=cpu \\\n  -p yolo_imgsz:=416 \\\n  -p max_yolo_hz:=3.0 \\\n  -p debug_visuals:=false \\\n  -p torch_num_threads:=2')">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+                <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12a1.5 1.5 0 01.439 1.061V16.5A1.5 1.5 0 0115.5 18h-7A1.5 1.5 0 017 16.5v-13z" />
+                <path d="M14.25 5.5l2.5 2.5h-2.5V5.5z" />
+                <path d="M5.25 6a1.5 1.5 0 00-1.5 1.5v11A1.5 1.5 0 005.25 20h7a1.5 1.5 0 001.5-1.5v-1.75H5.25a.25.25 0 01-.25-.25V6H5.25z" />
+              </svg>
+              Copy Commands
+            </button>
+          </div>
+          <pre><code># Drops resolution to 416, caps YOLO at 3Hz, and disables OpenCV debug windows:
+python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
+  -p device:=cpu \
+  -p yolo_imgsz:=416 \
+  -p max_yolo_hz:=3.0 \
+  -p debug_visuals:=false \
+  -p torch_num_threads:=2</code></pre>
+        </div>
+
+        <!-- Command 4 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">4. Model Selection Pipeline</h3>
+        <div class="code-console">
+          <div class="code-console-header">
+            <div class="console-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <div class="console-title">model_select.sh</div>
+            <button class="btn-copy" onclick="copyCode(this, 'python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \\\n  -p model_path:=realtime/yolo12n.onnx \\\n  -p device:=cpu \\\n  -p yolo_imgsz:=480\n\n# Optional manual export if you want to prepare ONNX before test day:\nyolo export model=realtime/yolo12n.pt format=onnx imgsz=480 simplify=True')">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+                <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12a1.5 1.5 0 01.439 1.061V16.5A1.5 1.5 0 0115.5 18h-7A1.5 1.5 0 017 16.5v-13z" />
+                <path d="M14.25 5.5l2.5 2.5h-2.5V5.5z" />
+                <path d="M5.25 6a1.5 1.5 0 00-1.5 1.5v11A1.5 1.5 0 005.25 20h7a1.5 1.5 0 001.5-1.5v-1.75H5.25a.25.25 0 01-.25-.25V6H5.25z" />
+              </svg>
+              Copy Commands
+            </button>
+          </div>
+          <pre><code># Preferred: run directly. The script loads ONNX first:
+python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
+  -p model_path:=realtime/yolo12n.onnx \
+  -p device:=cpu \
+  -p yolo_imgsz:=480
+
+# Optional: prepare ONNX manually before test day:
+yolo export model=realtime/yolo12n.pt format=onnx imgsz=480 simplify=True</code></pre>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M11.47 3.07a.75.75 0 011.06 0l3 3a.75.75 0 010 1.06l-3 3a.75.75 0 11-1.06-1.06L13.94 7H8a5 5 0 00-5 5v2a.75.75 0 01-1.5 0v-2a6.5 6.5 0 016.5-6.5h5.94l-2.47-2.47a.75.75 0 010-1.06z" clip-rule="evenodd" />
+          </svg>
+          Node Parameter Reference
+        </h2>
+        <p style="margin-bottom: 16px; color: var(--muted);">
+          Key ROS 2 parameters defined in <code>radartracks_processing_person_car_cpu_debug.py</code> to customize node behavior:
+        </p>
+        <ul class="bullet-list" style="margin-bottom: 8px;">
+          <li><strong>model_path</strong> (default: <code>realtime/yolo12n.onnx</code>): ONNX is tried first. If missing, the script tries to export from PT, then falls back to PT.</li>
+          <li><strong>yolo_imgsz</strong> (default: <code>480</code>): BGR input resolution for the YOLO neural network model.</li>
+          <li><strong>max_yolo_hz</strong> (default: <code>5.0</code>): Maximum YOLO inference rate. Camera frames can still update faster than detections.</li>
+          <li><strong>max_cached_yolo_age_sec</strong> (default: <code>0.6</code>): Cached boxes older than this are displayed but not used for fusion.</li>
+          <li><strong>radar_match_slop_sec</strong> (default: <code>0.15</code>): Maximum allowed time gap between camera frame timestamp and closest radar scan.</li>
+          <li><strong>torch_num_threads</strong> (default: <code>min(4, CPU count)</code>): Limits CPU cores assigned to PyTorch calculations.</li>
+          <li><strong>min_rcs</strong> (default: <code>-25.0</code>): Rejects noise returns showing low Radar Cross Section reflectivity.</li>
+          <li><strong>depth_gate_base_m</strong> (default: <code>1.6</code>) &amp; <strong>depth_gate_ratio</strong> (default: <code>0.16</code>): Configures spatial matching windows.</li>
+          <li><strong>allow_missing_depth</strong> (default: <code>True</code>): Continues to attempt projection/association when camera depth values are missing or zero.</li>
+          <li><strong>debug_visuals</strong> (default: <code>True</code>): Enables OpenCV windows. If display fails, the node disables visuals and continues running.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Tab 3: Interactive Projection Demo -->
+    <section id="demo" class="view">
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M4.25 2A2.25 2.25 0 002 4.25v2.5A2.25 2.25 0 004.25 9h2.5A2.25 2.25 0 009 6.75v-2.5A2.25 2.25 0 006.75 2h-2.5zm11.5 0A2.25 2.25 0 0013.5 4.25v2.5A2.25 2.25 0 0015.75 9h2.5A2.25 2.25 0 0020 6.75v-2.5A2.25 2.25 0 0017.75 2h-2.5zm-11.5 11A2.25 2.25 0 002 15.25v2.5A2.25 2.25 0 004.25 20h2.5A2.25 2.25 0 009 17.75v-2.5A2.25 2.25 0 006.75 13h-2.5zm11.5 0A2.25 2.25 0 0013.5 15.25v2.5A2.25 2.25 0 0015.75 20h2.5A2.25 2.25 0 0020 17.75v-2.5A2.25 2.25 0 0017.75 13h-2.5z" clip-rule="evenodd" />
+          </svg>
+          Sensor Fusion Gating Simulator
+        </h2>
+        <p style="margin-bottom: 24px; color: var(--muted);">
+          Simulate how radar returns and camera depth maps project and merge. In the new script, height (v-axis) gating is omitted for stability, and depth confirmation uses dynamic thresholds.
+        </p>
+
+        <div class="demo-container">
+          <div class="canvas-wrapper">
+            <canvas id="fusionCanvas" width="980" height="540"></canvas>
+          </div>
+
+          <div class="demo-controls">
+            <!-- Radar Range -->
+            <div class="control-group">
+              <div class="control-label">
+                <span>Radar Range (m)</span>
+                <span id="rangeValDisplay">15.0 m</span>
+              </div>
+              <input type="range" id="rangeSlider" min="2" max="50" step="0.5" value="18">
+            </div>
+
+            <!-- Radar Azimuth -->
+            <div class="control-group">
+              <div class="control-label">
+                <span>Radar Azimuth (deg)</span>
+                <span id="azValDisplay">8.0 deg</span>
+              </div>
+              <input type="range" id="azSlider" min="-40" max="40" step="0.5" value="6">
+            </div>
+
+            <!-- Camera Depth -->
+            <div class="control-group">
+              <div class="control-label">
+                <span>RealSense Center Depth (m)</span>
+                <span id="depthValDisplay">17.0 m</span>
+              </div>
+              <input type="range" id="depthSlider" min="0" max="50" step="0.5" value="16.5">
+            </div>
+
+            <!-- YOLO Box horizontal center -->
+            <div class="control-group">
+              <div class="control-label">
+                <span>YOLO Box Horizontal Center (px)</span>
+                <span id="boxValDisplay">750 px</span>
+              </div>
+              <input type="range" id="boxSlider" min="120" max="1160" step="5" value="770">
+            </div>
+
+            <!-- Gate Parameters -->
+            <div class="control-group" style="padding-top: 10px; border-top: 1px solid var(--surface-border);">
+              <div class="control-label">
+                <span>Depth Gate Base (depth_gate_base_m)</span>
+                <span id="gateBaseDisplay">1.6 m</span>
+              </div>
+              <input type="range" id="gateBaseSlider" min="0.5" max="5.0" step="0.1" value="1.6">
+            </div>
+
+            <div class="control-group">
+              <div class="control-label">
+                <span>Depth Gate Ratio (depth_gate_ratio)</span>
+                <span id="gateRatioDisplay">0.16</span>
+              </div>
+              <input type="range" id="gateRatioSlider" min="0.05" max="0.50" step="0.01" value="0.16">
+            </div>
+
+            <!-- Options -->
+            <div class="control-group">
+              <label class="checkbox-control">
+                <input type="checkbox" id="allowMissingCheck" checked>
+                <span>Allow Missing Depth (depth = 0.0 m)</span>
+              </label>
+            </div>
+
+            <!-- Results -->
+            <div class="result-panel">
+              <h4 style="font-size: 0.95rem; margin-bottom: 12px; font-weight: 700; color: #fff;">Gating Decision Checklist</h4>
+              <div class="result-row">
+                <span>Projected Point (u, v)</span>
+                <span id="projectedCoordDisplay">-- px, -- px</span>
+              </div>
+              <div class="result-row">
+                <span>Horizontal Overlap (within Box + Margin)</span>
+                <span id="horizontalMatchDisplay">No</span>
+              </div>
+              <div class="result-row">
+                <span>Dynamic Depth Gate Bound</span>
+                <span id="gateBoundDisplay">-- m</span>
+              </div>
+              <div class="result-row">
+                <span>Depth Check Tolerance</span>
+                <span id="depthDiffDisplay">No</span>
+              </div>
+              <div class="result-row">
+                <span>Sensor Fusion State</span>
+                <span id="finalMatchDisplay">REJECTED</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    // Tab system navigation
+    const tabs = document.querySelectorAll('.tab');
+    const views = document.querySelectorAll('.view');
+
+    tabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        views.forEach(v => v.classList.remove('active'));
+        
+        tab.classList.add('active');
+        const activeView = document.getElementById(tab.dataset.view);
+        activeView.classList.add('active');
+        
+        // Re-draw canvas if we select the demo view
+        if (tab.dataset.view === 'demo') {
+          setTimeout(drawDemo, 50);
+        }
+      });
+    });
+
+    // CLI clipboard copying system
+    function copyCode(button, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const origContent = button.innerHTML;
+        button.innerHTML = `
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px; display: inline-block; margin-right: 4px;">
+            <path fill-rule="evenodd" d="M16.704 4.153a.75.75 0 01.143 1.052l-8 10.5a.75.75 0 01-1.127.075l-4.5-4.5a.75.75 0 011.06-1.06l3.894 3.893 7.48-9.817a.75.75 0 011.05-.143z" clip-rule="evenodd" />
+          </svg>
+          Copied!
+        `;
+        button.style.backgroundColor = '#10b981';
+        button.style.borderColor = '#10b981';
+        button.style.color = '#fff';
+        
+        setTimeout(() => {
+          button.innerHTML = origContent;
+          button.style.backgroundColor = '';
+          button.style.borderColor = '';
+          button.style.color = '';
+        }, 1800);
+      }).catch(err => {
+        console.error('Copy failed:', err);
+      });
+    }
+
+    // Simulator variables and setup
+    const canvas = document.getElementById('fusionCanvas');
+    if (canvas) {
+      const ctx = canvas.getContext('2d');
+      
+      const rangeSlider = document.getElementById('rangeSlider');
+      const azSlider = document.getElementById('azSlider');
+      const depthSlider = document.getElementById('depthSlider');
+      const boxSlider = document.getElementById('boxSlider');
+      const gateBaseSlider = document.getElementById('gateBaseSlider');
+      const gateRatioSlider = document.getElementById('gateRatioSlider');
+      const allowMissingCheck = document.getElementById('allowMissingCheck');
+
+      const inputs = [rangeSlider, azSlider, depthSlider, boxSlider, gateBaseSlider, gateRatioSlider, allowMissingCheck];
+      inputs.forEach(input => {
+        input.addEventListener('input', drawDemo);
+        input.addEventListener('change', drawDemo);
+      });
+
+      function drawGrid(cContext, x, y, width, height) {
+        cContext.save();
+        cContext.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        cContext.lineWidth = 1;
+        const gridLines = 10;
+        for (let i = 0; i <= gridLines; i++) {
+          const px = x + (width * i) / gridLines;
+          cContext.beginPath();
+          cContext.moveTo(px, y);
+          cContext.lineTo(px, y + height);
+          cContext.stroke();
+        }
+        for (let i = 0; i <= 8; i++) {
+          const py = y + (height * i) / 8;
+          cContext.beginPath();
+          cContext.moveTo(x, py);
+          cContext.lineTo(x + width, py);
+          cContext.stroke();
+        }
+        cContext.restore();
+      }
+
+      function drawDemo() {
+        const range = parseFloat(rangeSlider.value);
+        const azDeg = parseFloat(azSlider.value);
+        const depth = parseFloat(depthSlider.value);
+        const boxCenter = parseFloat(boxSlider.value);
+        const gateBase = parseFloat(gateBaseSlider.value);
+        const gateRatio = parseFloat(gateRatioSlider.value);
+        const allowMissing = allowMissingCheck.checked;
+
+        // Update display text values
+        document.getElementById('rangeValDisplay').textContent = range.toFixed(1) + ' m';
+        document.getElementById('azValDisplay').textContent = azDeg.toFixed(1) + ' deg';
+        document.getElementById('depthValDisplay').textContent = depth === 0 ? '0.0 m (Missing)' : depth.toFixed(1) + ' m';
+        document.getElementById('boxValDisplay').textContent = Math.round(boxCenter) + ' px';
+        document.getElementById('gateBaseDisplay').textContent = gateBase.toFixed(1) + ' m';
+        document.getElementById('gateRatioDisplay').textContent = gateRatio.toFixed(2);
+
+        // Gating & Projection Math
+        const azRad = (azDeg * Math.PI) / 180;
+        const fx = 916.357;
+        const cx = 630.561;
+        const cy = 367.721;
+        const imgW = 1280;
+        const imgH = 720;
+
+        // Polar to Camera Cartesian coordinate projection
+        const xForward = range * Math.cos(azRad);
+        const yLateral = range * Math.sin(azRad);
+        const zForward = Math.max(xForward, 0.001);
+        const u = fx * yLateral / zForward + cx;
+        const v = cy;
+
+        // YOLO Box Bounds Configuration
+        const boxWidth = 220;
+        const boxHeight = 280;
+        const x1 = boxCenter - boxWidth / 2;
+        const x2 = boxCenter + boxWidth / 2;
+        const y1 = 200;
+        const y2 = y1 + boxHeight;
+        
+        // Margin calculated matching python code logic: max(10, 0.08 * box_width)
+        const margin = Math.max(10, 0.08 * boxWidth);
+        const horizontalMatch = (u >= x1 - margin) && (u <= x2 + margin);
+
+        // Depth matching checks
+        const depthValid = depth > 0.2;
+        const depthDiff = Math.abs(depth - range);
+        const depthGate = Math.max(gateBase, gateRatio * range);
+        
+        let depthMatch = false;
+        if (depthValid) {
+          depthMatch = depthDiff <= depthGate;
+        } else {
+          depthMatch = allowMissing;
+        }
+
+        const accepted = horizontalMatch && depthMatch;
+
+        // Update displays in HTML
+        document.getElementById('projectedCoordDisplay').textContent = `u: ${Math.round(u)}px, v: ${Math.round(v)}px`;
+        
+        const horDisplay = document.getElementById('horizontalMatchDisplay');
+        horDisplay.textContent = horizontalMatch ? 'Passed' : 'Failed (Out of horizontal box limits)';
+        horDisplay.className = horizontalMatch ? 'text-green' : 'text-red';
+
+        document.getElementById('gateBoundDisplay').textContent = `± ${depthGate.toFixed(2)} m`;
+        
+        const depDisplay = document.getElementById('depthDiffDisplay');
+        if (depthValid) {
+          depDisplay.textContent = depthMatch ? `Passed (diff: ${depthDiff.toFixed(2)}m)` : `Failed (diff: ${depthDiff.toFixed(2)}m > gate: ${depthGate.toFixed(2)}m)`;
+          depDisplay.className = depthMatch ? 'text-green' : 'text-red';
+        } else {
+          depDisplay.textContent = allowMissing ? 'Passed (Allowed missing depth)' : 'Failed (Depth is missing and missing depth not allowed)';
+          depDisplay.className = allowMissing ? 'text-green' : 'text-red';
+        }
+
+        const matchDisplay = document.getElementById('finalMatchDisplay');
+        matchDisplay.textContent = accepted ? 'FUSION ACCEPTED' : 'FUSION REJECTED';
+        matchDisplay.className = accepted ? 'text-green' : 'text-red';
+
+        // Start drawing canvas
+        const w = canvas.width;
+        const h = canvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        // Background
+        ctx.fillStyle = '#07090e';
+        ctx.fillRect(0, 0, w, h);
+
+        // Left Panel (Radar Bird's Eye View) and Right Panel (Camera Projected View)
+        const left = { x: 20, y: 50, w: 450, h: 440 };
+        const right = { x: 510, y: 50, w: 450, h: 440 };
+
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(left.x, left.y, left.w, left.h);
+        ctx.fillRect(right.x, right.y, right.w, right.h);
+
+        drawGrid(ctx, left.x, left.y, left.w, left.h);
+        drawGrid(ctx, right.x, right.y, right.w, right.h);
+
+        // Border frames
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(left.x, left.y, left.w, left.h);
+        ctx.strokeRect(right.x, right.y, right.w, right.h);
+
+        // Titles
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '700 14px Outfit, sans-serif';
+        ctx.fillText("RADAR 2D TOP VIEW", left.x + 10, left.y - 12);
+        ctx.fillText("CAMERA RECONSTRUCTED FRAME", right.x + 10, right.y - 12);
+
+        // ------------------ Draw Left: Radar View ------------------
+        ctx.save();
+        const radarCenter = { x: left.x + left.w / 2, y: left.y + left.h - 30 };
+        const radarScale = left.h / 55; // 55 meters fits height
+
+        // Draw distance concentric arcs (10m, 20m, 30m, 40m)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+        ctx.lineWidth = 1;
+        [10, 20, 30, 40, 50].forEach(d => {
+          ctx.beginPath();
+          ctx.arc(radarCenter.x, radarCenter.y, d * radarScale, Math.PI, 2 * Math.PI);
+          ctx.stroke();
+          ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+          ctx.font = '400 10px Outfit, sans-serif';
+          ctx.fillText(`${d}m`, radarCenter.x - 4, radarCenter.y - (d * radarScale) - 2);
+        });
+
+        // Draw sensor FOV boundary limits (+/- 34.5 deg)
+        const fovRad = 34.5 * Math.PI / 180;
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.2)';
+        ctx.lineWidth = 1.5;
+        
+        ctx.beginPath();
+        ctx.moveTo(radarCenter.x, radarCenter.y);
+        ctx.lineTo(radarCenter.x - Math.sin(fovRad) * 50 * radarScale, radarCenter.y - Math.cos(fovRad) * 50 * radarScale);
+        ctx.stroke();
+
+        ctx.beginPath();
+        ctx.moveTo(radarCenter.x, radarCenter.y);
+        ctx.lineTo(radarCenter.x + Math.sin(fovRad) * 50 * radarScale, radarCenter.y - Math.cos(fovRad) * 50 * radarScale);
+        ctx.stroke();
+
+        // Draw radar point
+        const ptPx = radarCenter.x + yLateral * radarScale;
+        const ptPy = radarCenter.y - xForward * radarScale;
+        
+        ctx.fillStyle = accepted ? '#10b981' : '#f59e0b';
+        ctx.beginPath();
+        ctx.arc(ptPx, ptPy, 8, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = accepted ? '#10b981' : '#f59e0b';
+        ctx.fill();
+        ctx.shadowBlur = 0; // reset shadow
+
+        // Depth confirmation window rendering on Radar View (centered at radar range)
+        if (depthValid) {
+          ctx.strokeStyle = 'rgba(20, 184, 166, 0.3)';
+          ctx.lineWidth = 1.5;
+          ctx.setLineDash([4, 4]);
+          
+          ctx.beginPath();
+          ctx.arc(radarCenter.x, radarCenter.y, (depth - depthGate) * radarScale, Math.PI, 2 * Math.PI);
+          ctx.stroke();
+          
+          ctx.beginPath();
+          ctx.arc(radarCenter.x, radarCenter.y, (depth + depthGate) * radarScale, Math.PI, 2 * Math.PI);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // Draw Depth position dot
+          const depthPx = radarCenter.x + (yLateral * (depth/range)) * radarScale;
+          const depthPy = radarCenter.y - (xForward * (depth/range)) * radarScale;
+          ctx.fillStyle = '#14b8a6';
+          ctx.beginPath();
+          ctx.arc(depthPx, depthPy, 5, 0, 2 * Math.PI);
+          ctx.fill();
+        }
+
+        // Label for radar point
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '600 11px Outfit, sans-serif';
+        ctx.fillText(`Radar: R=${range.toFixed(1)}m`, ptPx + 12, ptPy - 4);
+        
+        ctx.restore();
+
+        // ------------------ Draw Right: Camera Projected View ------------------
+        ctx.save();
+        
+        // Draw Ground/Horizon Line representation
+        ctx.fillStyle = 'rgba(255,255,255,0.03)';
+        ctx.fillRect(right.x, right.y + right.h / 2, right.w, right.h / 2);
+        
+        ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(right.x, right.y + right.h / 2);
+        ctx.lineTo(right.x + right.w, right.y + right.h / 2);
+        ctx.stroke();
+
+        // Convert camera coordinates to rendering canvas coordinates
+        // Width scale: right.w / imgW, Height scale: right.h / imgH
+        const renderScaleX = right.w / imgW;
+        const renderScaleY = right.h / imgH;
+
+        const renderBoxX1 = right.x + x1 * renderScaleX;
+        const renderBoxY1 = right.y + y1 * renderScaleY;
+        const renderBoxW = boxWidth * renderScaleX;
+        const renderBoxH = boxHeight * renderScaleY;
+        const renderMargin = margin * renderScaleX;
+
+        // Draw Margin boundaries
+        ctx.fillStyle = 'rgba(59, 130, 246, 0.04)';
+        ctx.fillRect(renderBoxX1 - renderMargin, renderBoxY1, renderBoxW + 2 * renderMargin, renderBoxH);
+        ctx.strokeStyle = 'rgba(59, 130, 246, 0.15)';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([5, 5]);
+        ctx.strokeRect(renderBoxX1 - renderMargin, renderBoxY1, renderBoxW + 2 * renderMargin, renderBoxH);
+        ctx.setLineDash([]);
+
+        // Draw YOLO Box (Green)
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 2.5;
+        ctx.strokeRect(renderBoxX1, renderBoxY1, renderBoxW, renderBoxH);
+        
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+        ctx.fillRect(renderBoxX1, renderBoxY1, renderBoxW, renderBoxH);
+
+        // YOLO Text Label
+        ctx.fillStyle = '#10b981';
+        ctx.font = '700 11px Outfit, sans-serif';
+        const labelText = `YOLO: ${depthValid ? depth.toFixed(1) + 'm' : 'depth missing'}`;
+        ctx.fillText(labelText, renderBoxX1 + 6, renderBoxY1 + 16);
+
+        // Project radar return coordinates onto drawing canvas
+        const projX = right.x + u * renderScaleX;
+        const projY = right.y + v * renderScaleY;
+
+        // Render point inside camera canvas boundary limits
+        if (projX >= right.x && projX <= right.x + right.w) {
+          ctx.fillStyle = accepted ? '#10b981' : '#f59e0b';
+          ctx.beginPath();
+          ctx.arc(projX, projY, 8, 0, 2 * Math.PI);
+          ctx.fill();
+          ctx.shadowBlur = 10;
+          ctx.shadowColor = accepted ? '#10b981' : '#f59e0b';
+          ctx.fill();
+          ctx.shadowBlur = 0; // reset
+
+          // Label coordinates
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '600 10px Outfit, sans-serif';
+          ctx.fillText(`u: ${Math.round(u)}px`, projX + 10, projY - 6);
+        }
+
+        ctx.restore();
+      }
+
+      // Initial draw
+      drawDemo();
+    }
+  </script>
+</body>
+</html>
