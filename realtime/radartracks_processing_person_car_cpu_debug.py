@@ -222,7 +222,7 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.declare_parameter("display_scale", 0.5)
         self.declare_parameter("radar_debug_range_m", 50.0)
         self.declare_parameter("radar_debug_lateral_m", 25.0)
-        self.declare_parameter("radar_debug_max_labels", 16)
+        self.declare_parameter("radar_debug_max_labels", 8)
         self.declare_parameter("radar_debug_sample_rows", 8)
         self.declare_parameter("fusion_window_name", "Fusion Pipeline")
 
@@ -709,18 +709,6 @@ class PersonCarRadarYOLOFusionNode(Node):
             matches.append(match)
             used_radars.add(radar.index)
             used_yolos.add(yolo.index)
-            self.recent_matches.append(
-                {
-                    "ts": current_ts,
-                    "u": radar.u,
-                    "v": yolo.center[1],
-                    "range_m": fused_range,
-                    "class_name": yolo.class_name,
-                    "track_id": track_id,
-                    "score": score,
-                    "camera_weight": camera_weight,
-                }
-            )
 
         self.drop_stale_tracks(current_ts)
         return matches
@@ -914,15 +902,17 @@ class PersonCarRadarYOLOFusionNode(Node):
                 radius = 3
             cv2.circle(img, (radar.u, radar.v), radius, color, -1)
 
-        live_recent = []
-        for item in self.recent_matches:
-            if current_ts - item["ts"] <= 0.6:
-                live_recent.append(item)
-                cv2.circle(img, (item["u"], item["v"]), 10, (0, 0, 255), 2)
-                camera_pct = int(round(item["camera_weight"] * 100.0))
-                label = f"#{item['track_id']} {item['class_name']} R:{item['range_m']:.1f} C:{camera_pct}% S:{item['score']:.2f}"
-                self.put_label(img, label, (item["u"] + 12, item["v"] + 6), (0, 0, 255))
-        self.recent_matches = deque(live_recent, maxlen=80)
+        for match in matches:
+            x1, y1, _, _ = match.yolo.bbox
+            radar_pt = (match.radar.u, match.radar.v)
+            yolo_pt = match.yolo.center
+            cv2.circle(img, radar_pt, 10, (0, 0, 255), 2)
+            cv2.line(img, radar_pt, yolo_pt, (0, 0, 255), 1, cv2.LINE_AA)
+            label = (
+                f"#{match.track_id} {match.yolo.class_name} "
+                f"D:{match.range_m:.1f}m A:{math.degrees(match.azimuth_rad):+.1f}deg"
+            )
+            self.put_label(img, label, (x1, max(18, y1 - 8)), (0, 0, 255))
 
         radar_text = "no radar"
         if radar_dt != float("inf"):
@@ -938,8 +928,8 @@ class PersonCarRadarYOLOFusionNode(Node):
         return img
 
     def draw_radar_debug(self, radar_points, matches, radar_dt):
-        width, height = 900, 540
-        map_width = 650
+        width, height = 760, 520
+        map_width = 520
         panel_x = map_width + 12
         img = np.full((height, width, 3), (24, 32, 38), dtype=np.uint8)
         origin = (map_width // 2, height - 42)
@@ -951,7 +941,8 @@ class PersonCarRadarYOLOFusionNode(Node):
             py = int(origin[1] - (x_forward / range_m) * (height * 0.84))
             return px, py
 
-        matched_ids = {match.radar.index for match in matches}
+        match_by_radar_id = {match.radar.index: match for match in matches}
+        matched_ids = set(match_by_radar_id)
         gated_points = [p for p in radar_points if p.in_azimuth_gate and p.in_rcs_gate]
         in_image_points = [p for p in gated_points if p.in_image]
         matched_points = [p for p in radar_points if p.index in matched_ids]
@@ -961,7 +952,8 @@ class PersonCarRadarYOLOFusionNode(Node):
             + sorted(gated_points, key=lambda p: p.rcs, reverse=True)
             + sorted(gated_points, key=lambda p: p.range_m)
         )
-        label_ids = {p.index for p in sample_points[: max(0, self.radar_debug_max_labels)]}
+        max_map_labels = min(max(0, self.radar_debug_max_labels), 8)
+        label_ids = {p.index for p in sample_points[:max_map_labels]}
 
         for r in range(10, int(range_m) + 1, 10):
             _, py = world_to_px(0.0, float(r))
@@ -993,9 +985,15 @@ class PersonCarRadarYOLOFusionNode(Node):
                 color = (100, 100, 100)
                 radius = 4
             cv2.circle(img, (px, py), radius, color, -1)
+            if point.index in matched_ids:
+                cv2.circle(img, (px, py), radius + 4, color, 2)
             if point.index in label_ids:
-                label = f"{point.index} R:{point.range_m:.1f} rcs:{point.rcs:.0f} v:{point.doppler_velocity:.1f}"
-                cv2.putText(img, label, (px + 7, py - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1)
+                match = match_by_radar_id.get(point.index)
+                if match is not None:
+                    label = f"#{match.track_id} {match.yolo.class_name} {point.range_m:.1f}m"
+                else:
+                    label = f"#{point.index} {point.range_m:.1f}m"
+                self.put_label(img, label, (px + 9, py - 6), color, max_x=map_width - 8)
 
         radar_text = "no synchronized radar"
         if radar_dt != float("inf"):
@@ -1044,17 +1042,16 @@ class PersonCarRadarYOLOFusionNode(Node):
     ):
         cv2.rectangle(img, (x - 8, 10), (img.shape[1] - 10, img.shape[0] - 10), (18, 23, 28), -1)
         lines = [
-            "Radar sample only",
+            "Radar top view",
             f"total returns: {len(radar_points)}",
             f"gate pass: {len(gated_points)}",
             f"in image: {len(in_image_points)}",
             f"matched: {len(matched_points)}",
             radar_text,
             "",
-            "colors:",
-            "red = fused match",
-            "orange = valid radar",
-            "gray = rejected",
+            "red fused match",
+            "orange valid radar",
+            "gray rejected",
             "",
             "sample rows:",
         ]
@@ -1068,8 +1065,8 @@ class PersonCarRadarYOLOFusionNode(Node):
         for point in sample_points[: max(0, self.radar_debug_sample_rows)]:
             az_deg = math.degrees(point.azimuth_rad)
             line = (
-                f"#{point.index:02d} R {point.range_m:4.1f}m "
-                f"az {az_deg:5.1f} rcs {point.rcs:5.1f}"
+                f"#{point.index:02d} R{point.range_m:4.1f} "
+                f"az{az_deg:5.1f} rcs{point.rcs:4.0f}"
             )
             color = (0, 0, 255) if any(match.index == point.index for match in matched_points) else (255, 160, 70)
             cv2.putText(img, line, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 0.38, color, 1, cv2.LINE_AA)
@@ -1096,12 +1093,14 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.debug_visuals = False
 
     @staticmethod
-    def put_label(img, text, origin, color):
+    def put_label(img, text, origin, color, max_x=None):
         x, y = origin
         font = cv2.FONT_HERSHEY_SIMPLEX
         scale = 0.48
         thickness = 1
         (tw, th), baseline = cv2.getTextSize(text, font, scale, thickness)
+        right_limit = img.shape[1] - tw - 8 if max_x is None else max_x - tw - 8
+        x = min(max(4, x), max(4, right_limit))
         y = max(th + 6, y)
         cv2.rectangle(img, (x, y - th - 6), (x + tw + 6, y + baseline), (20, 24, 28), -1)
         cv2.putText(img, text, (x + 3, y - 3), font, scale, color, thickness, cv2.LINE_AA)
@@ -1260,7 +1259,7 @@ def configure_offline_fusion(args, frame_width, frame_height):
     fusion.display_scale = 0.5
     fusion.radar_debug_range_m = 50.0
     fusion.radar_debug_lateral_m = 25.0
-    fusion.radar_debug_max_labels = 16
+    fusion.radar_debug_max_labels = 8
     fusion.radar_debug_sample_rows = 8
     fusion.fusion_window_name = "Offline Fake Radar Fusion"
     fusion.fx, fusion.fy, fusion.cx, fusion.cy = offline_camera_intrinsics(
@@ -1513,11 +1512,35 @@ def ensure_even_video_frame(img):
     return img
 
 
+def fit_panel_to_width(panel, target_width):
+    if panel.shape[1] > target_width:
+        scale = target_width / float(panel.shape[1])
+        new_height = max(1, int(round(panel.shape[0] * scale)))
+        return cv2.resize(panel, (target_width, new_height), interpolation=cv2.INTER_AREA)
+
+    if panel.shape[1] == target_width:
+        return panel
+
+    canvas = np.full((panel.shape[0], target_width, 3), (24, 32, 38), dtype=np.uint8)
+    x0 = (target_width - panel.shape[1]) // 2
+    canvas[:, x0 : x0 + panel.shape[1]] = panel
+    return canvas
+
+
+def stack_debug_rows(top_panel, bottom_panel, max_width=1440):
+    target_width = min(top_panel.shape[1], max_width)
+    top = fit_panel_to_width(top_panel, target_width)
+    bottom = fit_panel_to_width(bottom_panel, target_width)
+    divider = np.full((6, target_width, 3), (35, 42, 48), dtype=np.uint8)
+    return np.vstack((top, divider, bottom))
+
+
 def compose_offline_debug_frame(fusion, color_img, radar_points, matches, current_ts, ran_yolo):
     yolo_panel = fusion.draw_yolo_debug(color_img.copy(), current_ts, ran_yolo)
     fusion_panel = fusion.draw_fusion_debug(color_img.copy(), radar_points, matches, current_ts, 0.0)
     radar_panel = fusion.draw_radar_debug(radar_points, matches, 0.0)
-    output = fusion.combine_panels([yolo_panel, fusion_panel, radar_panel])
+    camera_row = fusion.combine_panels([yolo_panel, fusion_panel])
+    output = stack_debug_rows(camera_row, radar_panel)
     fusion.put_label(
         output,
         "OFFLINE TEST: fake YOLO depth + fake radar",
