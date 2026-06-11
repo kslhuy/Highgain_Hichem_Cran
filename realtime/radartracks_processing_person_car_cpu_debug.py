@@ -190,7 +190,7 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.declare_parameter("sync_queue_size", 30)
         self.declare_parameter("sync_slop_sec", 0.1)
 
-        # Radar projection and fusion gates. min_rcs, radar_match_slop_sec,
+        # Radar projection and fusion gates. min_rcs (Radar Cross Section), radar_match_slop_sec,
         # depth_gate_base_m, and depth_gate_ratio are the main fusion knobs.
         self.declare_parameter("max_azimuth_deg", 34.5)
         self.declare_parameter("min_rcs", -25.0)
@@ -620,12 +620,20 @@ class PersonCarRadarYOLOFusionNode(Node):
 
                 depth_valid = yolo.depth_m > 0.2
                 depth_diff = abs(yolo.depth_m - radar.range_m) if depth_valid else float("inf")
+
+                # Adaptive depth gate:
+                # close range uses at least depth_gate_base_m;
+                # far range grows by depth_gate_ratio * radar range.
+                # Increase these values when real targets are rejected by depth.
+                # Decrease them when radar points attach to the wrong YOLO box.
                 depth_gate = max(self.depth_gate_base_m, self.depth_gate_ratio * radar.range_m)
                 if depth_valid and depth_diff > depth_gate:
                     continue
                 if not depth_valid and not self.allow_missing_depth:
                     continue
 
+                # Final association score. Higher score wins. Horizontal alignment
+                # matters most, then depth agreement, YOLO confidence, and RCS.
                 box_center_u = (x1 + x2) * 0.5
                 horizontal_error = abs(radar.u - box_center_u) / max(box_width * 0.5 + margin, 1)
                 horizontal_score = max(0.0, 1.0 - horizontal_error)
@@ -1156,6 +1164,21 @@ def build_arg_parser():
         default=69.4,
         help="Approximate horizontal camera FOV used to fake camera intrinsics.",
     )
+    parser.add_argument(
+        "--realtime-playback",
+        action="store_true",
+        help="Throttle --offline-demo to the input video FPS so it behaves like a live camera.",
+    )
+    parser.add_argument(
+        "--loop",
+        action="store_true",
+        help="Loop the input video in --offline-demo until Esc/Ctrl+C or --max-frames is reached.",
+    )
+    parser.add_argument(
+        "--no-output",
+        action="store_true",
+        help="Do not write an annotated video file in --offline-demo; useful for live display only.",
+    )
     parser.add_argument("--show", action="store_true", help="Show OpenCV windows during --offline-demo.")
     return parser
 
@@ -1510,11 +1533,21 @@ def run_offline_demo(args):
         while True:
             ok, frame = cap.read()
             if not ok:
-                break
+                if args.loop:
+                    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                    ok, frame = cap.read()
+                if not ok:
+                    break
             if max_frames and frame_index >= max_frames:
                 break
 
             current_ts = frame_index / fps
+            if args.realtime_playback:
+                target_time = start + current_ts
+                wait_sec = target_time - time.perf_counter()
+                if wait_sec > 0.0:
+                    time.sleep(wait_sec)
+
             ran_yolo = frame_index % yolo_every == 0 or not cached_detections
             if ran_yolo:
                 cached_detections = run_offline_yolo(fusion, frame, current_ts)
@@ -1539,7 +1572,7 @@ def run_offline_demo(args):
                 ran_yolo,
             )
 
-            if writer is None:
+            if not args.no_output and writer is None:
                 output_dir = os.path.dirname(output_path)
                 if output_dir:
                     os.makedirs(output_dir, exist_ok=True)
@@ -1553,7 +1586,8 @@ def run_offline_demo(args):
                 if not writer.isOpened():
                     raise RuntimeError(f"Cannot open output video writer: {output_path}")
 
-            writer.write(output_frame)
+            if writer is not None:
+                writer.write(output_frame)
             total_detections += len(cached_detections)
             total_matches += len(matches)
 
@@ -1584,7 +1618,10 @@ def run_offline_demo(args):
         f"frames={frame_index}, detections/frame={total_detections / frame_index:.2f}, "
         f"matches/frame={total_matches / frame_index:.2f}"
     )
-    print(f"[INFO] Wrote: {output_path}")
+    if writer is None:
+        print("[INFO] Output video disabled (--no-output).")
+    else:
+        print(f"[INFO] Wrote: {output_path}")
 
 
 def main(args=None):

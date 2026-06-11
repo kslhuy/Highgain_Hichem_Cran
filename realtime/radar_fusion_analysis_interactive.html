@@ -897,6 +897,146 @@
       <div class="panel">
         <h2 class="panel-title">
           <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M10 2a.75.75 0 01.75.75v1.39a6.001 6.001 0 015.11 5.11h1.39a.75.75 0 010 1.5h-1.39a6.001 6.001 0 01-5.11 5.11v1.39a.75.75 0 01-1.5 0v-1.39a6.001 6.001 0 01-5.11-5.11H2.75a.75.75 0 010-1.5h1.39a6.001 6.001 0 015.11-5.11V2.75A.75.75 0 0110 2zm0 3.5a4.5 4.5 0 100 9 4.5 4.5 0 000-9zm0 2.25a2.25 2.25 0 100 4.5 2.25 2.25 0 000-4.5z" clip-rule="evenodd" />
+          </svg>
+          Fusion Decision Walkthrough
+        </h2>
+        <p style="margin-bottom: 20px; color: var(--muted);">
+          Think of fusion as one question: does this radar point belong to this YOLO box? For every camera frame, the script compares YOLO boxes, depth-camera distance, and radar returns, then accepts a match only when the signals agree enough.
+        </p>
+
+        <div class="grid cols-3">
+          <div class="metric-card">
+            <div class="badge badge-blue" style="margin-bottom: 10px;">1. YOLO boxes</div>
+            <p style="font-size: 0.95rem;">YOLO says what object is visible and where it is in the image.</p>
+            <code style="display: block; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; font-family: var(--mono); font-size: 0.8rem;">car box: x = 300..500</code>
+          </div>
+          <div class="metric-card">
+            <div class="badge badge-teal" style="margin-bottom: 10px;">2. Depth value</div>
+            <p style="font-size: 0.95rem;">The depth image says approximately how far the object is from the camera.</p>
+            <code style="display: block; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; font-family: var(--mono); font-size: 0.8rem;">box depth = 12 m</code>
+          </div>
+          <div class="metric-card">
+            <div class="badge badge-green" style="margin-bottom: 10px;">3. Radar returns</div>
+            <p style="font-size: 0.95rem;">Radar says something exists at a range, angle, reflection strength, and relative speed.</p>
+            <code style="display: block; margin-top: 10px; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px; font-family: var(--mono); font-size: 0.8rem;">range = 13 m, RCS = -12</code>
+          </div>
+        </div>
+
+        <div class="grid cols-2" style="margin-top: 24px;">
+          <div class="metric-card" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="badge badge-blue" style="width: fit-content;">Step 1: Radar Projection</div>
+            <p style="font-size: 0.95rem;">
+              Radar gives range and azimuth. The script projects that radar return into the camera image as a pixel coordinate <code>u</code>.
+            </p>
+            <pre style="margin: 0; padding: 12px; background: rgba(0,0,0,0.35); border-radius: 6px; overflow-x: auto;"><code>range = 13 m
+azimuth = angle left/right
+projected pixel u = 410
+
+YOLO box x = 300..500
+Is u = 410 inside the box? yes</code></pre>
+            <p style="font-size: 0.95rem;">
+              If the projected radar pixel is horizontally inside or near the YOLO box, the radar return becomes a possible match.
+            </p>
+          </div>
+
+          <div class="metric-card" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="badge badge-warn" style="width: fit-content;">Step 2: RCS Gate</div>
+            <p style="font-size: 0.95rem;">
+              RCS means radar reflection strength. High RCS is a strong echo. Low RCS is more likely weak noise or a ghost return.
+            </p>
+            <pre style="margin: 0; padding: 12px; background: rgba(0,0,0,0.35); border-radius: 6px; overflow-x: auto;"><code>min_rcs = -25
+
+RCS -10 -> keep
+RCS -22 -> keep
+RCS -32 -> reject</code></pre>
+            <p style="font-size: 0.95rem;">
+              Increase <code>min_rcs</code> to reject more weak radar points. Decrease it to keep more weak points, which is more sensitive but creates more false matches.
+            </p>
+          </div>
+
+          <div class="metric-card" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="badge badge-teal" style="width: fit-content;">Step 3: Depth Gate</div>
+            <p style="font-size: 0.95rem;">
+              Depth camera and radar range should roughly agree. The new script uses an adaptive tolerance, because far objects need more tolerance than close objects.
+            </p>
+            <pre style="margin: 0; padding: 12px; background: rgba(0,0,0,0.35); border-radius: 6px; overflow-x: auto;"><code>depth_gate = max(depth_gate_base_m,
+                 depth_gate_ratio * radar_range)
+
+default = max(1.6 m, 0.16 * radar_range)
+
+At 13 m:
+0.16 * 13 = 2.08 m
+depth_gate = 2.08 m</code></pre>
+            <pre style="margin: 0; padding: 12px; background: rgba(0,0,0,0.35); border-radius: 6px; overflow-x: auto;"><code>YOLO depth = 12 m
+Radar range = 13 m
+Difference = 1 m
+
+1.0 m -> accepted
+4.0 m -> rejected</code></pre>
+          </div>
+
+          <div class="metric-card" style="display: flex; flex-direction: column; gap: 12px;">
+            <div class="badge badge-green" style="width: fit-content;">Step 4: Score</div>
+            <p style="font-size: 0.95rem;">
+              If a radar point passes the gates, the script gives each possible radar-box pair a score. The best one-to-one pair wins.
+            </p>
+            <pre style="margin: 0; padding: 12px; background: rgba(0,0,0,0.35); border-radius: 6px; overflow-x: auto;"><code>score =
+  0.48 * horizontal_score +
+  0.32 * depth_score +
+  0.15 * yolo_confidence +
+  0.05 * rcs_score</code></pre>
+            <ul class="bullet-list" style="font-size: 0.9rem;">
+              <li><strong>Horizontal alignment</strong> is most important.</li>
+              <li><strong>Depth agreement</strong> is second.</li>
+              <li><strong>YOLO confidence</strong> helps the decision.</li>
+              <li><strong>RCS</strong> helps a little, but does not dominate.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="comparison-table-wrapper" style="margin-top: 24px;">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Simple example</th>
+                <th>Value</th>
+                <th>Decision</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>YOLO sees car</td>
+                <td><code>box x = 300..500, depth = 12 m, confidence = 0.80</code></td>
+                <td>Candidate object exists in the camera image.</td>
+              </tr>
+              <tr>
+                <td>Radar return</td>
+                <td><code>range = 13 m, projected u = 410, RCS = -12</code></td>
+                <td>Radar point is near the same horizontal image area.</td>
+              </tr>
+              <tr>
+                <td>Gate checks</td>
+                <td><code>u inside box: yes, RCS: yes, depth diff = 1 m: yes</code></td>
+                <td><span class="badge badge-green">fusion accepted</span></td>
+              </tr>
+              <tr>
+                <td>Output</td>
+                <td><code>class_name, range, x/y position, track_id, vrel_x, vrel_y</code></td>
+                <td>The object is tracked over time with fused position and estimated velocity.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p style="margin-top: 18px; color: var(--muted);">
+          Short version: YOLO tells what object is visible and where it is in the image. Depth tells camera distance. Radar gives range, angle, speed, and reflection strength. Fusion accepts the match only when those signals agree enough.
+        </p>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
             <path fill-rule="evenodd" d="M12.577 4.878a.75.75 0 01.919-.53l4.78 1.281a.75.75 0 01.53.919l-1.281 4.78a.75.75 0 01-1.449-.387l.81-3.022-10.22 10.22a.75.75 0 01-1.06-1.06L15.32 8.38l-3.022.81a.75.75 0 01-.72-.312z" clip-rule="evenodd" />
           </svg>
           Fusion Mechanics & Gating Theory
@@ -1063,6 +1203,97 @@ python realtime/radartracks_processing_person_car_cpu_debug.py --ros-args \
 
 # Optional: prepare ONNX manually before test day:
 yolo export model=realtime/yolo12n.pt format=onnx imgsz=480 simplify=True</code></pre>
+        </div>
+
+        <!-- Command 5 -->
+        <h3 style="margin-bottom: 8px; font-size: 1.05rem;">5. Run <code>car.mp4</code> Like a Live Camera with Fake Radar/Depth</h3>
+        <div class="code-console">
+          <div class="code-console-header">
+            <div class="console-dots">
+              <span class="dot-red"></span>
+              <span class="dot-yellow"></span>
+              <span class="dot-green"></span>
+            </div>
+            <div class="console-title">fake_camera_demo.ps1</div>
+            <button class="btn-copy" onclick="copyCode(this, 'python realtime\\run_car_mp4_fake_sensors.py')">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 14px; height: 14px;">
+                <path d="M7 3.5A1.5 1.5 0 018.5 2h3.879a1.5 1.5 0 011.06.44l3.122 3.12a1.5 1.5 0 01.439 1.061V16.5A1.5 1.5 0 0115.5 18h-7A1.5 1.5 0 017 16.5v-13z" />
+                <path d="M14.25 5.5l2.5 2.5h-2.5V5.5z" />
+                <path d="M5.25 6a1.5 1.5 0 00-1.5 1.5v11A1.5 1.5 0 005.25 20h7a1.5 1.5 0 001.5-1.5v-1.75H5.25a.25.25 0 01-.25-.25V6H5.25z" />
+              </svg>
+              Copy Command
+            </button>
+          </div>
+          <pre><code># Uses realtime/car.mp4 as the camera, estimates fake depth, and creates fake radar returns:
+python realtime\run_car_mp4_fake_sensors.py
+
+# Save an annotated video instead of only displaying live:
+python realtime\run_car_mp4_fake_sensors.py --once --record --output realtime\car_live_fake_sensors.mp4</code></pre>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="panel-title">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style="width: 20px; height: 20px; display: inline-block;">
+            <path fill-rule="evenodd" d="M2.25 4A2.25 2.25 0 014.5 1.75h11A2.25 2.25 0 0117.75 4v9A2.25 2.25 0 0115.5 15.25h-11A2.25 2.25 0 012.25 13V4zm1.5 0v9c0 .414.336.75.75.75h11a.75.75 0 00.75-.75V4a.75.75 0 00-.75-.75h-11a.75.75 0 00-.75.75zM6 17.5a.75.75 0 01.75-.75h6.5a.75.75 0 010 1.5h-6.5A.75.75 0 016 17.5z" clip-rule="evenodd" />
+          </svg>
+          Debug Window Guide
+        </h2>
+        <p style="margin-bottom: 16px; color: var(--muted);">
+          Read the fake camera demo from left to right. It is one video frame shown through three diagnostic views: YOLO-only, fused camera/radar, and radar top-view. The small picture-in-picture rectangle in the road video is already part of <code>car.mp4</code>; the fusion code treats the whole frame as the camera image.
+        </p>
+
+        <div class="comparison-table-wrapper" style="margin-bottom: 20px;">
+          <table class="comparison-table">
+            <thead>
+              <tr>
+                <th>Screen area</th>
+                <th>What it shows</th>
+                <th>How to read it</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Left: <code>YOLO debug</code></td>
+                <td>Camera image plus YOLO person/car boxes only.</td>
+                <td>Each box label is <code>class confidence depth</code>. In fake mode, depth is estimated from box size; in real ROS mode, depth comes from the aligned depth image. <code>new inference</code> means YOLO ran on this frame; <code>cached</code> means the previous boxes are being reused.</td>
+              </tr>
+              <tr>
+                <td>Middle: <code>Fusion debug</code></td>
+                <td>The same camera frame with projected radar points and final fusion matches.</td>
+                <td>Green boxes are YOLO detections. Red radar markers/labels are accepted radar+YOLO matches. Blue/orange points are radar returns that pass basic gates but did not become a final match. Gray points are rejected by gates or image bounds.</td>
+              </tr>
+              <tr>
+                <td>Right: <code>Radar debug top view</code></td>
+                <td>A bird's-eye radar map in meters, centered on the ego vehicle/radar sensor.</td>
+                <td>Vertical axis is forward range. Horizontal axis is lateral offset. The white dot is the sensor position. Diagonal lines show the radar field of view. Red points are fused matches, blue points are valid unmatched radar, and gray points are rejected radar.</td>
+              </tr>
+              <tr>
+                <td>Far right: <code>Radar sample only</code></td>
+                <td>A compact table for the same radar returns drawn in the top-view panel.</td>
+                <td><code>total returns</code> is all radar points. <code>gate pass</code> passed azimuth/RCS gates. <code>in image</code> projected inside the camera frame. <code>matched</code> fused with a YOLO box. Sample rows show return index, range <code>R</code>, azimuth <code>az</code>, reflectivity <code>rcs</code>, and Doppler velocity <code>v</code>.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="state-grid">
+          <div class="state-card">
+            <h3>Main status numbers</h3>
+            <p><code>boxes: 3</code> means YOLO found three target objects. <code>radar returns: 11</code> means the fake radar generated eleven returns, including clutter. <code>matches: 3</code> means three radar returns were accepted as belonging to YOLO boxes.</p>
+          </div>
+          <div class="state-card">
+            <h3>Fusion label format</h3>
+            <p><code>#1 car R:34.3 C:50% S:0.69</code> means track ID 1, class car, fused range 34.3 m, camera contributes 50 percent of the fused position, and association score is 0.69.</p>
+          </div>
+          <div class="state-card">
+            <h3>Offline fake mode</h3>
+            <p>The bottom label <code>OFFLINE TEST: fake YOLO depth + fake radar</code> means only the camera video is real. Depth and radar are synthetic, so this verifies visualization, timing, projection, gating, and tracking logic without ROS hardware.</p>
+          </div>
+          <div class="state-card">
+            <h3>When something looks wrong</h3>
+            <p>Boxes with no red match usually means radar projection or depth gates are too strict. Red points far from the visible object suggest camera FOV, intrinsics, or lateral radar offset needs tuning.</p>
+          </div>
         </div>
       </div>
 

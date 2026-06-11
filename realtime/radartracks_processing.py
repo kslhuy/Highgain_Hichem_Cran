@@ -15,6 +15,20 @@ class RadarYOLOFusionNode(Node):
     def __init__(self):
         super().__init__('radar_yolo_fusion_node')
 
+        # Hardcoded tuning guide for this standard script:
+        # - MAX_AZIMUTH_RAD: 20-45 deg. Up = wider radar field, more side clutter.
+        #   Down = center-only, fewer false side matches.
+        # - YOLO model: yolo12n.pt is simple but slower on CPU than ONNX.
+        # - target_classes: remove classes to reduce false matches and CPU work.
+        # - radar_buffer maxlen: larger = tolerate more radar history, stale risk.
+        # - velocity_alpha: 0.1-0.8. Up = faster velocity response, noisier.
+        #   Down = smoother velocity, slower response.
+        # - ApproximateTimeSynchronizer slop: 0.03-0.20s. Up = more color/depth
+        #   pairs, worse time match. Down = stricter sync, fewer callbacks.
+        # - RCS gate below: -35 to 0. Up = stronger radar returns only.
+        #   Down = accepts weak returns, useful indoors but adds clutter.
+        # - Fixed depth gate below: 1.0-5.0m. Up = easier match, more false fusions.
+        #   Down = stricter match, can reject real objects.
         self.fx = self.fy = self.cx = self.cy = None
         self.camera_info_sub = self.create_subscription(
             CameraInfo, '/camera/camera/color/camera_info', self.camera_info_callback, 10)
@@ -141,7 +155,8 @@ class RadarYOLOFusionNode(Node):
         for r_msg in r_scan_msg.returns:
             az_rad = r_msg.azimuth
             
-            # 1. Lower the RCS threshold to -25.0 to survive indoor fading!
+            # RCS threshold. Increase toward -10/0 to reject weak ghost returns.
+            # Decrease toward -30/-35 if real indoor targets are being rejected.
             if abs(az_rad) > self.MAX_AZIMUTH_RAD or r_msg.rcs < -25.0:
                 continue 
 
@@ -171,7 +186,8 @@ class RadarYOLOFusionNode(Node):
                     radar_depth = r_msg.range
                     
                     diff = abs(rs_depth - radar_depth)
-                    # Relaxed depth tolerance to 3.0m for indoor multipath ghosting
+                    # Fixed depth tolerance. Increase above 3.0 for easier matching
+                    # at distance; decrease below 3.0 for fewer false fusions.
                     if rs_depth == 0.0 or rs_depth > 5.0 or diff < 3.0:
                         if diff < min_depth_diff:
                             min_depth_diff = diff
