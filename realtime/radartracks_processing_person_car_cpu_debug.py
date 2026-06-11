@@ -106,6 +106,16 @@ class SyntheticRadarScan:
     returns: list
 
 
+COCO_CLASS_NAMES = {
+    0: "person",
+    1: "bicycle",
+    2: "car",
+    3: "motorcycle",
+    5: "bus",
+    7: "truck",
+}
+
+
 class PersonCarRadarYOLOFusionNode(Node):
     """
     CPU-focused radar + YOLO fusion node for person and car only.
@@ -443,10 +453,27 @@ class PersonCarRadarYOLOFusionNode(Node):
                 pass
 
     def find_target_class_ids(self):
-        names = self.model.names
-        items = names.items() if isinstance(names, dict) else enumerate(names)
+        names = self.model_class_names(self.model)
+        items = names.items()
         class_ids = [int(class_id) for class_id, name in items if name in self.target_names]
         return class_ids if class_ids else None
+
+    @staticmethod
+    def model_class_names(model):
+        try:
+            names = getattr(model, "names", None)
+        except AttributeError:
+            names = None
+
+        if isinstance(names, dict) and names:
+            return {int(class_id): str(name) for class_id, name in names.items()}
+        if isinstance(names, (list, tuple)) and names:
+            return {int(class_id): str(name) for class_id, name in enumerate(names)}
+        return COCO_CLASS_NAMES
+
+    @staticmethod
+    def class_name_from_model(model, class_id):
+        return PersonCarRadarYOLOFusionNode.model_class_names(model).get(int(class_id), str(class_id))
 
     def camera_info_callback(self, msg):
         if self.fx is None:
@@ -514,7 +541,7 @@ class PersonCarRadarYOLOFusionNode(Node):
         detections = []
         for index, box in enumerate(result.boxes):
             class_id = int(box.cls[0])
-            class_name = self.model.names[class_id]
+            class_name = self.class_name_from_model(self.model, class_id)
             if class_name not in self.target_names:
                 continue
 
@@ -1248,19 +1275,19 @@ def configure_offline_fusion(args, frame_width, frame_height):
         torch.set_num_threads(max(1, min(4, os.cpu_count() or 2)))
 
     fusion.target_names = {"person", "car"}
-    if ULTRALYTICS_AVAILABLE:
+    if fusion.model_path.lower().endswith(".onnx"):
+        fusion.model = cv2.dnn.readNetFromONNX(fusion.model_path)
+        fusion.target_class_ids = [0, 2]
+        fusion.offline_backend = "opencv_dnn"
+    elif ULTRALYTICS_AVAILABLE:
         fusion.model = YOLO(fusion.model_path, task="detect")
         fusion.target_class_ids = fusion.find_target_class_ids()
         fusion.offline_backend = "ultralytics"
     else:
-        if not fusion.model_path.lower().endswith(".onnx"):
-            raise RuntimeError(
-                "Ultralytics is not installed, so --offline-demo needs an ONNX model. "
-                f"Got: {fusion.model_path}"
-            )
-        fusion.model = cv2.dnn.readNetFromONNX(fusion.model_path)
-        fusion.target_class_ids = [0, 2]
-        fusion.offline_backend = "opencv_dnn"
+        raise RuntimeError(
+            "Ultralytics is not installed, so --offline-demo needs an ONNX model. "
+            f"Got: {fusion.model_path}"
+        )
     fusion.yolo_detections = []
     fusion.yolo_cache_stale = False
     fusion.last_yolo_ts = 0.0
@@ -1316,7 +1343,7 @@ def run_offline_yolo(fusion, color_img, current_ts):
     detections = []
     for index, box in enumerate(result.boxes):
         class_id = int(box.cls[0])
-        class_name = fusion.model.names[class_id]
+        class_name = PersonCarRadarYOLOFusionNode.class_name_from_model(fusion.model, class_id)
         if class_name not in fusion.target_names:
             continue
 
