@@ -1,6 +1,7 @@
 import argparse
 import math
 import os
+import threading
 import time
 from collections import deque
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ try:
     from cv_bridge import CvBridge
     from message_filters import ApproximateTimeSynchronizer, Subscriber
     from my_detections.msg import Detection
+    from my_msgs.msg import CustomRadarTrack
     from radar_msgs.msg import RadarScan
     from rclpy.node import Node
     from sensor_msgs.msg import CameraInfo, Image
@@ -36,6 +38,7 @@ except ImportError:
     ApproximateTimeSynchronizer = None
     Subscriber = None
     Detection = None
+    CustomRadarTrack = None
     RadarScan = None
     CameraInfo = None
     Image = None
@@ -75,6 +78,9 @@ class RadarPoint:
     in_azimuth_gate: bool
     in_rcs_gate: bool
     in_image: bool
+    vrel_x: float = 0.0
+    vrel_y: float = 0.0
+    has_cartesian_velocity: bool = False
 
 
 @dataclass
@@ -132,6 +138,8 @@ class PersonCarRadarYOLOFusionNode(Node):
       Down = removes duplicate boxes more aggressively.
     - max_yolo_hz: 2-10. Up = fresher boxes, more CPU load.
       Down = cooler/faster system, but boxes are cached longer.
+    - async_yolo: True keeps YOLO out of the ROS image callback.
+      False is simpler for debugging but makes the window wait on YOLO.
     - max_cached_yolo_age_sec: 0.2-1.0. Up = tolerate slow YOLO, more stale risk.
       Down = safer timing, fewer fusions when YOLO is slow.
     - torch_num_threads: 1-8. Up can speed PT inference until CPU saturates.
@@ -186,6 +194,7 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.declare_parameter("yolo_conf", 0.35)
         self.declare_parameter("yolo_iou", 0.45)
         self.declare_parameter("max_yolo_hz", 5.0)
+        self.declare_parameter("async_yolo", True)
         self.declare_parameter("max_cached_yolo_age_sec", 0.6)
         self.declare_parameter("torch_num_threads", max(1, min(4, os.cpu_count() or 2)))
         self.declare_parameter("opencv_num_threads", 1)
@@ -195,7 +204,8 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.declare_parameter("camera_info_topic", "/camera/camera/color/camera_info")
         self.declare_parameter("color_topic", "/camera/camera/color/image_raw")
         self.declare_parameter("depth_topic", "/camera/camera/aligned_depth_to_color/image_raw")
-        self.declare_parameter("radar_topic", "/radar_scan")
+        self.declare_parameter("radar_topic", "/radar_track")
+        self.declare_parameter("radar_message_type", "custom_track")
         self.declare_parameter("detections_topic", "/detections")
         self.declare_parameter("sync_queue_size", 30)
         self.declare_parameter("sync_slop_sec", 0.1)
@@ -233,6 +243,7 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.yolo_iou = float(self.get_parameter("yolo_iou").value)
         self.max_yolo_hz = float(self.get_parameter("max_yolo_hz").value)
         self.min_yolo_period = 1.0 / max(self.max_yolo_hz, 0.1)
+        self.async_yolo = bool(self.get_parameter("async_yolo").value)
         self.max_cached_yolo_age_sec = float(self.get_parameter("max_cached_yolo_age_sec").value)
         self.sync_queue_size = int(self.get_parameter("sync_queue_size").value)
         self.sync_slop_sec = float(self.get_parameter("sync_slop_sec").value)
@@ -279,6 +290,10 @@ class PersonCarRadarYOLOFusionNode(Node):
         color_topic = self.get_parameter("color_topic").value
         depth_topic = self.get_parameter("depth_topic").value
         radar_topic = self.get_parameter("radar_topic").value
+        self.radar_message_type = self.normalize_radar_message_type(
+            self.get_parameter("radar_message_type").value
+        )
+        radar_msg_type = self.radar_ros_message_class(self.radar_message_type)
         detections_topic = self.get_parameter("detections_topic").value
 
         self.camera_info_sub = self.create_subscription(
@@ -286,7 +301,7 @@ class PersonCarRadarYOLOFusionNode(Node):
         )
         self.color_sub = Subscriber(self, Image, color_topic)
         self.depth_sub = Subscriber(self, Image, depth_topic)
-        self.radar_sub = self.create_subscription(RadarScan, radar_topic, self.radar_callback, 100)
+        self.radar_sub = self.create_subscription(radar_msg_type, radar_topic, self.radar_callback, 100)
         self.detection_pub = self.create_publisher(Detection, detections_topic, 20)
 
         self.ts = ApproximateTimeSynchronizer(
@@ -301,6 +316,12 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.yolo_cache_stale = True
         self.last_yolo_ts = 0.0
         self.last_yolo_runtime_ms = 0.0
+        self.yolo_lock = threading.Lock()
+        self.yolo_worker_event = threading.Event()
+        self.yolo_worker_stop = False
+        self.yolo_worker_busy = False
+        self.yolo_pending_job = None
+        self.yolo_worker_thread = None
         self.last_radar_points = []
         self.recent_matches = deque(maxlen=80)
         self.tracks = {}
@@ -309,13 +330,50 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.last_status_log = 0.0
         self.display_available = True
 
+        if self.async_yolo:
+            self.start_yolo_worker()
+
         target_id_text = self.target_class_ids if self.target_class_ids is not None else "name-filter"
         self.get_logger().info(
             "CPU person/car Radar-YOLO fusion started. "
             f"model={self.model_path}, imgsz={self.yolo_imgsz}, "
-            f"max_yolo_hz={self.max_yolo_hz:.1f}, classes={target_id_text}, "
-            f"camera_position_weight={self.camera_position_weight:.2f}"
+            f"max_yolo_hz={self.max_yolo_hz:.1f}, async_yolo={self.async_yolo}, "
+            f"classes={target_id_text}, "
+            f"camera_position_weight={self.camera_position_weight:.2f}, "
+            f"radar_topic={radar_topic}, radar_type={self.radar_message_type}"
         )
+
+    def destroy_node(self):
+        self.stop_yolo_worker()
+        try:
+            return super().destroy_node()
+        except AttributeError:
+            return None
+
+    @staticmethod
+    def normalize_radar_message_type(value):
+        normalized = str(value).strip().lower().replace("-", "_")
+        aliases = {
+            "custom": "custom_track",
+            "custom_track": "custom_track",
+            "custom_radar_track": "custom_track",
+            "track": "custom_track",
+            "tracks": "custom_track",
+            "radar_scan": "radar_scan",
+            "scan": "radar_scan",
+        }
+        if normalized not in aliases:
+            valid = ", ".join(sorted(set(aliases.values())))
+            raise ValueError(f"Unsupported radar_message_type={value!r}. Use one of: {valid}")
+        return aliases[normalized]
+
+    @staticmethod
+    def radar_ros_message_class(radar_message_type):
+        if radar_message_type == "custom_track":
+            return CustomRadarTrack
+        if radar_message_type == "radar_scan":
+            return RadarScan
+        raise ValueError(f"Unsupported radar_message_type={radar_message_type!r}")
 
     @staticmethod
     def default_model_path():
@@ -493,6 +551,78 @@ class PersonCarRadarYOLOFusionNode(Node):
     def radar_callback(self, msg):
         self.radar_buffer.append((self.timestamp(msg), msg))
 
+    def start_yolo_worker(self):
+        self.yolo_worker_thread = threading.Thread(
+            target=self.yolo_worker_loop,
+            name="radar-yolo-inference",
+            daemon=True,
+        )
+        self.yolo_worker_thread.start()
+
+    def stop_yolo_worker(self):
+        worker = getattr(self, "yolo_worker_thread", None)
+        if worker is None:
+            return
+        with self.yolo_lock:
+            self.yolo_worker_stop = True
+            self.yolo_pending_job = None
+        self.yolo_worker_event.set()
+        worker.join(timeout=1.0)
+        self.yolo_worker_thread = None
+
+    def yolo_worker_loop(self):
+        while True:
+            self.yolo_worker_event.wait()
+            self.yolo_worker_event.clear()
+
+            with self.yolo_lock:
+                if self.yolo_worker_stop:
+                    return
+                job = self.yolo_pending_job
+                self.yolo_pending_job = None
+
+            if job is None:
+                with self.yolo_lock:
+                    self.yolo_worker_busy = False
+                continue
+
+            color_img, depth_img, current_ts = job
+            try:
+                detections, runtime_ms = self.infer_yolo(color_img, depth_img)
+            except Exception as exc:
+                detections = []
+                runtime_ms = 0.0
+                self.get_logger().warning(f"YOLO worker failed: {exc}")
+
+            with self.yolo_lock:
+                if not self.yolo_worker_stop:
+                    self.yolo_detections = detections
+                    self.last_yolo_runtime_ms = runtime_ms
+                    self.last_yolo_ts = current_ts
+                self.yolo_worker_busy = False
+
+    def submit_yolo_if_due(self, color_img, depth_img, current_ts):
+        with self.yolo_lock:
+            if self.yolo_worker_busy or self.yolo_pending_job is not None:
+                return False
+            if current_ts - self.last_yolo_ts < self.min_yolo_period:
+                return False
+
+            self.yolo_pending_job = (color_img.copy(), depth_img.copy(), current_ts)
+            self.yolo_worker_busy = True
+
+        self.yolo_worker_event.set()
+        return True
+
+    def yolo_snapshot(self):
+        with self.yolo_lock:
+            return (
+                list(self.yolo_detections),
+                self.last_yolo_ts,
+                self.last_yolo_runtime_ms,
+                self.yolo_worker_busy,
+            )
+
     def synced_callback(self, color_msg, depth_msg):
         current_ts = self.timestamp(color_msg)
         if self.fx is None:
@@ -502,19 +632,24 @@ class PersonCarRadarYOLOFusionNode(Node):
         color_img = self.bridge.imgmsg_to_cv2(color_msg, desired_encoding="bgr8")
         depth_img = self.bridge.imgmsg_to_cv2(depth_msg, desired_encoding="passthrough")
 
-        run_yolo = current_ts - self.last_yolo_ts >= self.min_yolo_period
-        if run_yolo:
-            self.yolo_detections = self.run_yolo(color_img, depth_img, current_ts)
+        if self.async_yolo:
+            run_yolo = self.submit_yolo_if_due(color_img, depth_img, current_ts)
+        else:
+            run_yolo = current_ts - self.last_yolo_ts >= self.min_yolo_period
+            if run_yolo:
+                self.run_yolo(color_img, depth_img, current_ts)
 
-        yolo_age = current_ts - self.last_yolo_ts if self.last_yolo_ts > 0.0 else float("inf")
+        yolo_detections, last_yolo_ts, _, _ = self.yolo_snapshot()
+        yolo_age = current_ts - last_yolo_ts if last_yolo_ts > 0.0 else float("inf")
         self.yolo_cache_stale = yolo_age > self.max_cached_yolo_age_sec
-        fusion_yolo_detections = [] if self.yolo_cache_stale else self.yolo_detections
+        fusion_yolo_detections = [] if self.yolo_cache_stale else yolo_detections
 
-        closest_radar_msg, radar_dt = self.closest_radar_scan(current_ts)
+        radar_msgs, radar_dt = self.matched_radar_messages(current_ts)
         radar_points = []
         matches = []
-        if closest_radar_msg is not None and radar_dt <= self.radar_match_slop_sec:
-            radar_points = self.extract_radar_points(closest_radar_msg, color_img.shape)
+        if radar_msgs:
+            for radar_msg in radar_msgs:
+                radar_points.extend(self.extract_radar_points(radar_msg, color_img.shape))
             matches = self.associate(radar_points, fusion_yolo_detections, current_ts)
             for match in matches:
                 self.publish_detection(match)
@@ -526,6 +661,14 @@ class PersonCarRadarYOLOFusionNode(Node):
         self.frame_count += 1
 
     def run_yolo(self, color_img, depth_img, current_ts):
+        detections, runtime_ms = self.infer_yolo(color_img, depth_img)
+        with self.yolo_lock:
+            self.yolo_detections = detections
+            self.last_yolo_runtime_ms = runtime_ms
+            self.last_yolo_ts = current_ts
+        return detections
+
+    def infer_yolo(self, color_img, depth_img):
         start = time.perf_counter()
         predict_kwargs = {
             "imgsz": self.yolo_imgsz,
@@ -560,9 +703,8 @@ class PersonCarRadarYOLOFusionNode(Node):
                 )
             )
 
-        self.last_yolo_runtime_ms = (time.perf_counter() - start) * 1000.0
-        self.last_yolo_ts = current_ts
-        return detections
+        runtime_ms = (time.perf_counter() - start) * 1000.0
+        return detections, runtime_ms
 
     @staticmethod
     def robust_depth(depth_img, c_x, c_y, window):
@@ -596,17 +738,61 @@ class PersonCarRadarYOLOFusionNode(Node):
 
         return closest_msg, min_dt
 
+    def matched_radar_messages(self, current_ts):
+        while self.radar_buffer and current_ts - self.radar_buffer[0][0] > self.radar_buffer_sec:
+            self.radar_buffer.popleft()
+
+        if self.radar_message_type == "radar_scan":
+            closest_msg, min_dt = self.closest_radar_scan(current_ts)
+            if closest_msg is None or min_dt > self.radar_match_slop_sec:
+                return [], min_dt
+            return [closest_msg], min_dt
+
+        latest_by_track = {}
+        min_dt = float("inf")
+        for ts, msg in self.radar_buffer:
+            dt = abs(current_ts - ts)
+            if dt > self.radar_match_slop_sec:
+                continue
+
+            track_key = int(getattr(msg, "track_id", getattr(msg, "track_index", len(latest_by_track))))
+            existing = latest_by_track.get(track_key)
+            if existing is None or ts > existing[0]:
+                latest_by_track[track_key] = (ts, msg)
+            min_dt = min(min_dt, dt)
+
+        if not latest_by_track:
+            return [], min_dt
+
+        ordered_tracks = [item[1] for item in sorted(latest_by_track.values(), key=lambda item: item[0])]
+        return ordered_tracks, min_dt
+
     def extract_radar_points(self, radar_msg, image_shape):
         h, w = image_shape[:2]
         points = []
-        for index, radar_return in enumerate(radar_msg.returns):
-            range_m = float(radar_return.range)
-            azimuth_rad = float(radar_return.azimuth)
-            rcs = float(radar_return.rcs)
-            doppler_velocity = float(getattr(radar_return, "doppler_velocity", 0.0))
+        radar_returns = getattr(radar_msg, "returns", None)
+        if radar_returns is None:
+            radar_returns = [radar_msg]
 
-            x_forward = range_m * math.cos(azimuth_rad)
-            y_left = range_m * math.sin(azimuth_rad)
+        for fallback_index, radar_return in enumerate(radar_returns):
+            is_custom_track = not hasattr(radar_msg, "returns")
+            index = int(getattr(radar_return, "track_index", getattr(radar_return, "track_id", fallback_index)))
+            range_m = float(radar_return.range)
+            azimuth = float(radar_return.azimuth)
+            azimuth_rad = math.radians(azimuth) if is_custom_track else azimuth
+            rcs = float(radar_return.rcs)
+            vrel_x = float(getattr(radar_return, "vrel_x", 0.0))
+            vrel_y = float(getattr(radar_return, "vrel_y", 0.0))
+            has_cartesian_velocity = is_custom_track and (
+                hasattr(radar_return, "vrel_x") or hasattr(radar_return, "vrel_y")
+            )
+            if has_cartesian_velocity:
+                doppler_velocity = vrel_x * math.cos(azimuth_rad) + vrel_y * math.sin(azimuth_rad)
+            else:
+                doppler_velocity = float(getattr(radar_return, "doppler_velocity", 0.0))
+
+            x_forward = float(getattr(radar_return, "x", range_m * math.cos(azimuth_rad)))
+            y_left = float(getattr(radar_return, "y", range_m * math.sin(azimuth_rad)))
             z_forward = max(x_forward, 0.001)
             u = int(self.fx * (y_left + self.radar_lateral_offset_m) / z_forward + self.cx)
             v = int(self.cy)
@@ -628,6 +814,9 @@ class PersonCarRadarYOLOFusionNode(Node):
                     in_azimuth_gate=in_azimuth_gate,
                     in_rcs_gate=in_rcs_gate,
                     in_image=in_image,
+                    vrel_x=vrel_x,
+                    vrel_y=vrel_y,
+                    has_cartesian_velocity=has_cartesian_velocity,
                 )
             )
         return points
@@ -764,8 +953,12 @@ class PersonCarRadarYOLOFusionNode(Node):
         old = self.tracks.get(best_id)
         position_alpha = 0.65
         if old is None:
-            vx = radar.doppler_velocity * math.cos(azimuth_rad)
-            vy = radar.doppler_velocity * math.sin(azimuth_rad)
+            if radar.has_cartesian_velocity:
+                vx = radar.vrel_x
+                vy = radar.vrel_y
+            else:
+                vx = radar.doppler_velocity * math.cos(azimuth_rad)
+                vy = radar.doppler_velocity * math.sin(azimuth_rad)
             self.tracks[best_id] = {
                 "class_name": yolo.class_name,
                 "x_forward": x_forward,
@@ -779,7 +972,10 @@ class PersonCarRadarYOLOFusionNode(Node):
             }
         else:
             dt = current_ts - old["ts"]
-            if dt > 0.03:
+            if radar.has_cartesian_velocity:
+                old["vx"] = self.velocity_alpha * radar.vrel_x + (1.0 - self.velocity_alpha) * old.get("vx", 0.0)
+                old["vy"] = self.velocity_alpha * radar.vrel_y + (1.0 - self.velocity_alpha) * old.get("vy", 0.0)
+            elif dt > 0.03:
                 raw_vx = (x_forward - old["x_forward"]) / dt
                 raw_vy = (y_left - old["y_left"]) / dt
                 if math.hypot(raw_vx, raw_vy) < 50.0:
@@ -859,22 +1055,38 @@ class PersonCarRadarYOLOFusionNode(Node):
         return output
 
     def draw_yolo_debug(self, img, current_ts, ran_yolo):
-        for det in self.yolo_detections:
+        if hasattr(self, "yolo_lock"):
+            yolo_detections, last_yolo_ts, last_yolo_runtime_ms, yolo_busy = self.yolo_snapshot()
+        else:
+            yolo_detections = getattr(self, "yolo_detections", [])
+            last_yolo_ts = getattr(self, "last_yolo_ts", 0.0)
+            last_yolo_runtime_ms = getattr(self, "last_yolo_runtime_ms", 0.0)
+            yolo_busy = False
+
+        for det in yolo_detections:
             color = (0, 220, 0) if det.class_name == "person" else (0, 180, 255)
             x1, y1, x2, y2 = det.bbox
             cv2.rectangle(img, (x1, y1), (x2, y2), color, 2)
             label = f"{det.class_name} {det.confidence:.2f} depth:{det.depth_m:.1f}m"
             self.put_label(img, label, (x1, max(18, y1 - 8)), color)
 
-        cache_age = current_ts - self.last_yolo_ts
-        mode = "new inference" if ran_yolo else f"cached {cache_age:.2f}s"
+        cache_age = current_ts - last_yolo_ts if last_yolo_ts > 0.0 else float("inf")
+        if getattr(self, "async_yolo", False):
+            if ran_yolo:
+                mode = "submitted inference"
+            elif yolo_busy:
+                mode = f"inference running | cached {cache_age:.2f}s"
+            else:
+                mode = f"cached {cache_age:.2f}s"
+        else:
+            mode = "new inference" if ran_yolo else f"cached {cache_age:.2f}s"
         freshness = "stale for fusion" if self.yolo_cache_stale else "fresh for fusion"
         self.draw_hud(
             img,
             [
                 "YOLO debug: person + car only",
-                f"boxes: {len(self.yolo_detections)} | {mode}",
-                f"{freshness} | inference: {self.last_yolo_runtime_ms:.1f} ms | imgsz: {self.yolo_imgsz}",
+                f"boxes: {len(yolo_detections)} | {mode}",
+                f"{freshness} | inference: {last_yolo_runtime_ms:.1f} ms | imgsz: {self.yolo_imgsz}",
             ],
         )
         return img
